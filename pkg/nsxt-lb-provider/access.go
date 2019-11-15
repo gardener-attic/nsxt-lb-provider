@@ -128,8 +128,8 @@ func clusterTag(clusterName string) common.Tag {
 	return common.Tag{Scope: ScopeCluster, Tag: clusterName}
 }
 
-func serviceTag(namespace, serviceName string) common.Tag {
-	return common.Tag{Scope: ScopeService, Tag: fmt.Sprintf("%s/%s", namespace, serviceName)}
+func serviceTag(objectName objectName) common.Tag {
+	return common.Tag{Scope: ScopeService, Tag: objectName.String()}
 }
 
 func checkTags(tags []common.Tag, required ...common.Tag) bool {
@@ -169,12 +169,12 @@ func (a *access) DeleteLoadBalancerService(id string) error {
 	return nil
 }
 
-func (a *access) CreateVirtualServer(clusterName, namespace, serviceName, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error) {
+func (a *access) CreateVirtualServer(clusterName string, objectName objectName, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error) {
 	virtualServer := loadbalancer.LbVirtualServer{
-		Description: fmt.Sprintf("virtual server for cluster %s, namespace %s, service %s created by %s",
-			clusterName, namespace, serviceName, AppName),
-		DisplayName:           fmt.Sprintf("cluster:%s:%s:%s", clusterName, namespace, serviceName),
-		Tags:                  append(a.standardTags, clusterTag(clusterName), serviceTag(namespace, serviceName)),
+		Description: fmt.Sprintf("virtual server for cluster %s, service %s created by %s",
+			clusterName, objectName, AppName),
+		DisplayName:           fmt.Sprintf("cluster:%s:%s", clusterName, objectName),
+		Tags:                  append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)),
 		DefaultPoolMemberPort: fmt.Sprintf("%d", mapping.NodePort),
 		Enabled:               true,
 		IpAddress:             ipAddress,
@@ -184,19 +184,33 @@ func (a *access) CreateVirtualServer(clusterName, namespace, serviceName, ipAddr
 	}
 	result, _, err := a.nsxClient.ServicesApi.CreateLoadBalancerVirtualServer(a.nsxClient.Context, virtualServer)
 	if err != nil {
-		return nil, errors.Wrapf(err, "creating virtual server failed for %s:%s:%s with IP address %s", clusterName, namespace, serviceName, ipAddress)
+		return nil, errors.Wrapf(err, "creating virtual server failed for %s:%s with IP address %s", clusterName, objectName, ipAddress)
 	}
 	return &result, nil
 }
 
-func (a *access) FindVirtualServers(clusterName, namespace, serviceName string) ([]*loadbalancer.LbVirtualServer, error) {
+func (a *access) FindVirtualServers(clusterName string, objectName objectName) ([]*loadbalancer.LbVirtualServer, error) {
 	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerVirtualServers(a.nsxClient.Context, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing virtual servers failed")
 	}
 	var result []*loadbalancer.LbVirtualServer
 	for _, item := range list.Results {
-		if checkTags(item.Tags, ownerTag, clusterTag(clusterName), serviceTag(namespace, serviceName)) {
+		if checkTags(item.Tags, ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
+			result = append(result, &item)
+		}
+	}
+	return result, nil
+}
+
+func (a *access) ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtualServer, error) {
+	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerVirtualServers(a.nsxClient.Context, nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "listing virtual servers failed")
+	}
+	var result []*loadbalancer.LbVirtualServer
+	for _, item := range list.Results {
+		if checkTags(item.Tags, ownerTag, clusterTag(clusterName)) {
 			result = append(result, &item)
 		}
 	}
@@ -222,17 +236,17 @@ func (a *access) DeleteVirtualServer(id string) error {
 	return nil
 }
 
-func (a *access) CreatePool(clusterName, namespace, serviceName string) (*loadbalancer.LbPool, error) {
+func (a *access) CreatePool(clusterName string, objectName objectName) (*loadbalancer.LbPool, error) {
 	pool := loadbalancer.LbPool{
-		Description: fmt.Sprintf("pool for cluster %s, namespace %s, service %s created by %s",
-			clusterName, namespace, serviceName, AppName),
-		DisplayName: fmt.Sprintf("cluster:%s:%s:%s", clusterName, namespace, serviceName),
-		Tags:        append(a.standardTags, clusterTag(clusterName), serviceTag(namespace, serviceName)),
+		Description: fmt.Sprintf("pool for cluster %s, service %s created by %s",
+			clusterName, objectName, AppName),
+		DisplayName: fmt.Sprintf("cluster:%s:%s", clusterName, objectName),
+		Tags:        append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)),
 		Members:     []loadbalancer.PoolMember{},
 	}
 	result, _, err := a.nsxClient.ServicesApi.CreateLoadBalancerPool(a.nsxClient.Context, pool)
 	if err != nil {
-		return nil, errors.Wrapf(err, "creating pool failed for %s:%s:%s", clusterName, namespace, serviceName)
+		return nil, errors.Wrapf(err, "creating pool failed for %s:%s", clusterName, objectName)
 	}
 	return &result, nil
 }
@@ -245,17 +259,31 @@ func (a *access) GetPool(id string) (*loadbalancer.LbPool, error) {
 	return &pool, nil
 }
 
-func (a *access) FindPool(clusterName, namespace, serviceName string) (*loadbalancer.LbPool, error) {
+func (a *access) FindPool(clusterName string, objectName objectName) (*loadbalancer.LbPool, error) {
 	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerPools(a.nsxClient.Context, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing load balancer pools failed")
 	}
 	for _, item := range list.Results {
-		if checkTags(item.Tags, ownerTag, clusterTag(clusterName), serviceTag(namespace, serviceName)) {
+		if checkTags(item.Tags, ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
 			return &item, nil
 		}
 	}
 	return nil, nil
+}
+
+func (a *access) ListPools(clusterName string) ([]*loadbalancer.LbPool, error) {
+	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerPools(a.nsxClient.Context, nil)
+	if err != nil {
+		return nil, errors.Wrapf(err, "listing pools failed")
+	}
+	var result []*loadbalancer.LbPool
+	for _, item := range list.Results {
+		if checkTags(item.Tags, ownerTag, clusterTag(clusterName)) {
+			result = append(result, &item)
+		}
+	}
+	return result, nil
 }
 
 func (a *access) UpdatePool(pool *loadbalancer.LbPool) error {

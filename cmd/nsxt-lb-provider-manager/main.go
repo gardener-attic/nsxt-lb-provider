@@ -65,9 +65,13 @@ func main() {
 
 	//
 	var versionFlag *pflag.Value
+	var clusterNameFlag *pflag.Value
 	pflag.CommandLine.VisitAll(func(flag *pflag.Flag) {
-		if flag.Name == "version" {
+		switch flag.Name {
+		case "version":
 			versionFlag = &flag.Value
+		case "cluster-name":
+			clusterNameFlag = &flag.Value
 		}
 	})
 
@@ -77,6 +81,11 @@ func main() {
 		if versionFlag != nil && (*versionFlag).String() != "false" {
 			fmt.Printf("%s %s\n", lbprovider.AppName, lbprovider.Version())
 			os.Exit(0)
+		}
+		if clusterNameFlag != nil {
+			lbprovider.ClusterName = (*clusterNameFlag).String()
+		} else {
+			panic("cluster-name flag not found")
 		}
 		innerRun(cmd, args)
 	}

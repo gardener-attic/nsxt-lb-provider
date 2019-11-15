@@ -9,6 +9,8 @@ require (
 	github.com/vmware/go-vmware-nsxt v0.0.0-20190201205556-16aa0443042d // master
 	gopkg.in/gcfg.v1 v1.2.3
 	k8s.io/api v0.0.0
+	k8s.io/apimachinery v0.0.0
+	k8s.io/client-go v0.0.0
 	k8s.io/cloud-provider v0.0.0
 	k8s.io/component-base v0.0.0
 	k8s.io/klog v0.4.0

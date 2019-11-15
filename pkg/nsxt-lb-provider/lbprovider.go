@@ -30,100 +30,14 @@ import (
 )
 
 type lbProvider struct {
-	access Access
+	access  Access
+	keyLock *KeyLock
 }
+
+// TODO cluster name needed for reorg and is currently injected from main
+var ClusterName string
 
 var _ cloudprovider.LoadBalancer = &lbProvider{}
-
-type state struct {
-	access      Access
-	clusterName string
-	service     *corev1.Service
-	servers     []*loadbalancer.LbVirtualServer
-	ipAddress   string
-	poolID      string
-	pool        *loadbalancer.LbPool
-}
-
-func newState(clusterName string, service *corev1.Service, access Access) (*state, error) {
-	var err error
-	state := &state{access: access, clusterName: clusterName, service: service}
-	state.servers, err = access.FindVirtualServers(clusterName, service.Namespace, service.Name)
-	if err != nil {
-		return nil, err
-	}
-	if len(service.Status.LoadBalancer.Ingress) > 0 {
-		state.ipAddress = service.Status.LoadBalancer.Ingress[0].IP
-	}
-	if len(state.servers) > 0 {
-		state.ipAddress = state.servers[0].IpAddress
-		state.poolID = state.servers[0].PoolId
-	}
-
-	if state.poolID == "" {
-		state.pool, err = access.FindPool(clusterName, service.Namespace, service.Name)
-		if err != nil {
-			return nil, err
-		}
-		if state.pool != nil {
-			state.poolID = state.pool.Id
-		}
-	}
-
-	return state, nil
-}
-
-func (s *state) getPool() (*loadbalancer.LbPool, error) {
-	if s.pool == nil {
-		var err error
-		s.pool, err = s.access.GetPool(s.poolID)
-		return s.pool, err
-	}
-	return s.pool, nil
-}
-
-func (s *state) initialize() error {
-	var err error
-	if s.poolID == "" {
-		s.pool, err = s.access.CreatePool(s.clusterName, s.service.Namespace, s.service.Name)
-		if err != nil {
-			return err
-		}
-		s.poolID = s.pool.Id
-	}
-	if s.ipAddress == "" {
-		s.ipAddress, err = s.access.AllocateExternalIPAddress()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *state) finish() (*corev1.LoadBalancerStatus, error) {
-	if len(s.service.Spec.Ports) == 0 {
-		if s.ipAddress != "" {
-			exists, err := s.access.IsAllocatedExternalIPAddress(s.ipAddress)
-			if err != nil {
-				return nil, err
-			}
-			if exists {
-				err = s.access.ReleaseExternalIPAddress(s.ipAddress)
-				if err != nil {
-					return nil, err
-				}
-			}
-		}
-		if s.poolID != "" {
-			err := s.access.DeletePool(s.poolID)
-			if err != nil {
-				return nil, err
-			}
-		}
-		return nil, nil
-	}
-	return newLoadBalancerStatus(s.ipAddress), nil
-}
 
 func newLBProvider(config *config.Config) (*lbProvider, error) {
 	nsxtConfig := config.NSXT
@@ -157,13 +71,21 @@ func newLBProvider(config *config.Config) (*lbProvider, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "creating access handler failed")
 	}
-	return &lbProvider{access: access}, nil
+	return &lbProvider{access: access, keyLock: NewKeyLock()}, nil
+}
+
+func (p *lbProvider) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
+	client, err := clientBuilder.Client("reorg")
+	if err != nil {
+		panic(err)
+	}
+	go p.reorg(client.CoreV1().Services(""), stop)
 }
 
 // Implementations must treat the *corev1.Service parameter as read-only and not modify it.
 // Parameter 'clusterName' is the name of the cluster as presented to kube-controller-manager
 func (p *lbProvider) GetLoadBalancer(ctx context.Context, clusterName string, service *corev1.Service) (status *corev1.LoadBalancerStatus, exists bool, err error) {
-	servers, err := p.access.FindVirtualServers(clusterName, service.Namespace, service.Name)
+	servers, err := p.access.FindVirtualServers(clusterName, objectNameFromService(service))
 	if err != nil {
 		return nil, false, err
 	}
@@ -192,6 +114,10 @@ func (p *lbProvider) GetLoadBalancerName(ctx context.Context, clusterName string
 // parameters as read-only and not modify them.
 // Parameter 'clusterName' is the name of the cluster as presented to kube-controller-manager
 func (p *lbProvider) EnsureLoadBalancer(ctx context.Context, clusterName string, service *corev1.Service, nodes []*corev1.Node) (*corev1.LoadBalancerStatus, error) {
+	key := objectNameFromService(service).String()
+	p.keyLock.Lock(key)
+	defer p.keyLock.Unlock(key)
+
 	state, err := newState(clusterName, service, p.access)
 	if err != nil {
 		return nil, err
@@ -250,7 +176,7 @@ func (p *lbProvider) createVirtualServer(mapping Mapping, nodes []*corev1.Node, 
 	if err != nil {
 		return err
 	}
-	vserver, err := p.access.CreateVirtualServer(state.clusterName, state.service.Namespace, state.service.Name, state.ipAddress, mapping, state.poolID)
+	vserver, err := p.access.CreateVirtualServer(state.clusterName, objectNameFromService(state.service), state.ipAddress, mapping, state.poolID)
 	if err != nil {
 		state.finish()
 		return err
@@ -363,7 +289,11 @@ func (p *lbProvider) deleteVirtualServer(server *loadbalancer.LbVirtualServer, s
 // parameters as read-only and not modify them.
 // Parameter 'clusterName' is the name of the cluster as presented to kube-controller-manager
 func (p *lbProvider) UpdateLoadBalancer(ctx context.Context, clusterName string, service *corev1.Service, nodes []*corev1.Node) error {
-	pool, err := p.access.FindPool(clusterName, service.Namespace, service.Name)
+	key := objectNameFromService(service).String()
+	p.keyLock.Lock(key)
+	defer p.keyLock.Unlock(key)
+
+	pool, err := p.access.FindPool(clusterName, objectNameFromService(service))
 	if err != nil {
 		return err
 	}
