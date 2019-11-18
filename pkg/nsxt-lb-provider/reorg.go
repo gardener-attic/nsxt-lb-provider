@@ -28,35 +28,35 @@ import (
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
-type objectName struct {
+type ObjectName struct {
 	Namespace string
 	Name      string
 }
 
-func objectNameFromService(service *corev1.Service) objectName {
-	return objectName{Namespace: service.Namespace, Name: service.Name}
+func objectNameFromService(service *corev1.Service) ObjectName {
+	return ObjectName{Namespace: service.Namespace, Name: service.Name}
 }
 
-func (o objectName) String() string {
+func (o ObjectName) String() string {
 	return o.Namespace + "/" + o.Name
 }
 
-func parseObjectName(name string) objectName {
+func parseObjectName(name string) ObjectName {
 	parts := strings.Split(name, "/")
-	return objectName{Namespace: parts[0], Name: parts[1]}
+	return ObjectName{Namespace: parts[0], Name: parts[1]}
 }
 
 const maxPeriod = 30 * time.Minute
 
 func (p *lbProvider) reorg(client clientcorev1.ServiceInterface, stop <-chan struct{}) {
 	timer := time.NewTimer(1 * time.Second)
-	next := maxPeriod
 	lastErrNext := 0 * time.Second
 	for {
 		select {
 		case <-stop:
 			return
 		case <-timer.C:
+			var next time.Duration
 			err := p.doReorgStep(client)
 			if err == nil {
 				next = maxPeriod
@@ -83,14 +83,14 @@ func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
 		return err
 	}
 
-	services := map[objectName]struct{}{}
+	services := map[ObjectName]struct{}{}
 	for _, item := range list.Items {
 		if item.Spec.Type == corev1.ServiceTypeLoadBalancer {
 			services[objectNameFromService(&item)] = struct{}{}
 		}
 	}
 
-	lbs := map[objectName]struct{}{}
+	lbs := map[ObjectName]struct{}{}
 	servers, err := p.access.ListVirtualServers(ClusterName)
 	if err != nil {
 		return err

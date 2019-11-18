@@ -203,5 +203,9 @@ func ReadConfig(config io.Reader) (*Config, error) {
 		return nil, err
 	}
 
+	if err := cfg.validateConfig(); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
 }

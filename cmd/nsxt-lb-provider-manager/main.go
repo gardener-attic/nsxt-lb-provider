@@ -36,7 +36,14 @@ import (
 	"k8s.io/klog"
 )
 
+const AppName string = "nsxt-lb-provider"
+
+var version string
+
 func main() {
+	lbprovider.Version = version
+	lbprovider.AppName = AppName
+
 	rand.Seed(time.Now().UTC().UnixNano())
 
 	command := app.NewCloudControllerManagerCommand()
@@ -50,7 +57,7 @@ func main() {
 	logs.InitLogs()
 	defer logs.FlushLogs()
 
-	klog.V(1).Infof("%s version: %s", lbprovider.AppName, lbprovider.Version())
+	klog.V(1).Infof("%s version: %s", AppName, version)
 
 	// Set cloud-provider flag to vsphere
 	command.Flags().VisitAll(func(flag *pflag.Flag) {
@@ -75,11 +82,11 @@ func main() {
 		}
 	})
 
-	command.Use = lbprovider.AppName
+	command.Use = AppName
 	innerRun := command.Run
 	command.Run = func(cmd *cobra.Command, args []string) {
 		if versionFlag != nil && (*versionFlag).String() != "false" {
-			fmt.Printf("%s %s\n", lbprovider.AppName, lbprovider.Version())
+			fmt.Printf("%s %s\n", AppName, version)
 			os.Exit(0)
 		}
 		if clusterNameFlag != nil {

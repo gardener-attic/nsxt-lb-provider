@@ -1,2 +1,3 @@
 /cmd/test/
-.idea/
+/.idea/
+/nsxt-lb-provider-manager

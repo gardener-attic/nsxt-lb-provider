@@ -28,15 +28,15 @@ type Access interface {
 	UpdateLoadBalancerService(lbService *loadbalancer.LbService) error
 	DeleteLoadBalancerService(id string) error
 
-	CreateVirtualServer(clusterName string, objectName objectName, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error)
-	FindVirtualServers(clusterName string, objectName objectName) ([]*loadbalancer.LbVirtualServer, error)
+	CreateVirtualServer(clusterName string, objectName ObjectName, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error)
+	FindVirtualServers(clusterName string, objectName ObjectName) ([]*loadbalancer.LbVirtualServer, error)
 	ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtualServer, error)
 	UpdateVirtualServer(server *loadbalancer.LbVirtualServer) error
 	DeleteVirtualServer(id string) error
 
-	CreatePool(clusterName string, objectName objectName) (*loadbalancer.LbPool, error)
+	CreatePool(clusterName string, objectName ObjectName) (*loadbalancer.LbPool, error)
 	GetPool(id string) (*loadbalancer.LbPool, error)
-	FindPool(clusterName string, objectName objectName) (*loadbalancer.LbPool, error)
+	FindPool(clusterName string, objectName ObjectName) (*loadbalancer.LbPool, error)
 	ListPools(clusterName string) ([]*loadbalancer.LbPool, error)
 	UpdatePool(*loadbalancer.LbPool) error
 	DeletePool(id string) error

@@ -25,12 +25,14 @@ import (
 )
 
 const (
-	AppName            = "nsxt_lb_provider"
 	ProviderName       = "vsphere"
 	LeaderResourceName = "nsxt-lb-provider"
 )
 
-var version string
+var (
+	Version string
+	AppName string
+)
 
 func init() {
 	cloudprovider.RegisterCloudProvider(ProviderName, func(configReader io.Reader) (cloudprovider.Interface, error) {
@@ -41,8 +43,4 @@ func init() {
 
 		return newProvider(cfg)
 	})
-}
-
-func Version() string {
-	return version
 }

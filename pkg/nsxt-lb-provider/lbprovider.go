@@ -51,7 +51,7 @@ func newLBProvider(config *config.Config) (*lbProvider, error) {
 		BasePath:             "/api/v1",
 		Host:                 nsxtConfig.Host,
 		Scheme:               "https",
-		UserAgent:            "nsxt-lb-provider/" + Version(),
+		UserAgent:            "nsxt-lb-provider/" + Version,
 		UserName:             nsxtConfig.User,
 		Password:             nsxtConfig.Password,
 		RemoteAuth:           nsxtConfig.RemoteAuth,
@@ -178,7 +178,7 @@ func (p *lbProvider) createVirtualServer(mapping Mapping, nodes []*corev1.Node, 
 	}
 	vserver, err := p.access.CreateVirtualServer(state.clusterName, objectNameFromService(state.service), state.ipAddress, mapping, state.poolID)
 	if err != nil {
-		state.finish()
+		_, _ = state.finish()
 		return err
 	}
 	lbService.VirtualServerIds = append(lbService.VirtualServerIds, vserver.Id)
@@ -249,6 +249,7 @@ func (p *lbProvider) updatePoolMembers(clusterName string, pool *loadbalancer.Lb
 		}
 	}
 	if modified {
+		pool.Members = newMembers
 		err := p.access.UpdatePool(pool)
 		if err != nil {
 			return err

@@ -128,7 +128,7 @@ func clusterTag(clusterName string) common.Tag {
 	return common.Tag{Scope: ScopeCluster, Tag: clusterName}
 }
 
-func serviceTag(objectName objectName) common.Tag {
+func serviceTag(objectName ObjectName) common.Tag {
 	return common.Tag{Scope: ScopeService, Tag: objectName.String()}
 }
 
@@ -169,7 +169,7 @@ func (a *access) DeleteLoadBalancerService(id string) error {
 	return nil
 }
 
-func (a *access) CreateVirtualServer(clusterName string, objectName objectName, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error) {
+func (a *access) CreateVirtualServer(clusterName string, objectName ObjectName, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error) {
 	virtualServer := loadbalancer.LbVirtualServer{
 		Description: fmt.Sprintf("virtual server for cluster %s, service %s created by %s",
 			clusterName, objectName, AppName),
@@ -189,7 +189,7 @@ func (a *access) CreateVirtualServer(clusterName string, objectName objectName, 
 	return &result, nil
 }
 
-func (a *access) FindVirtualServers(clusterName string, objectName objectName) ([]*loadbalancer.LbVirtualServer, error) {
+func (a *access) FindVirtualServers(clusterName string, objectName ObjectName) ([]*loadbalancer.LbVirtualServer, error) {
 	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerVirtualServers(a.nsxClient.Context, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing virtual servers failed")
@@ -236,7 +236,7 @@ func (a *access) DeleteVirtualServer(id string) error {
 	return nil
 }
 
-func (a *access) CreatePool(clusterName string, objectName objectName) (*loadbalancer.LbPool, error) {
+func (a *access) CreatePool(clusterName string, objectName ObjectName) (*loadbalancer.LbPool, error) {
 	pool := loadbalancer.LbPool{
 		Description: fmt.Sprintf("pool for cluster %s, service %s created by %s",
 			clusterName, objectName, AppName),
@@ -259,7 +259,7 @@ func (a *access) GetPool(id string) (*loadbalancer.LbPool, error) {
 	return &pool, nil
 }
 
-func (a *access) FindPool(clusterName string, objectName objectName) (*loadbalancer.LbPool, error) {
+func (a *access) FindPool(clusterName string, objectName ObjectName) (*loadbalancer.LbPool, error) {
 	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerPools(a.nsxClient.Context, nil)
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing load balancer pools failed")
@@ -348,7 +348,7 @@ func (a *access) ReleaseExternalIPAddress(address string) error {
 			resp.StatusCode, address, a.config.LoadBalancerIPPoolName, a.ipPoolID)
 	}
 	if err != nil {
-		return errors.Wrapf(err, "releasing external IP address %s failed")
+		return errors.Wrapf(err, "releasing external IP address %s failed", address)
 	}
 	return nil
 }
