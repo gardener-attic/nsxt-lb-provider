@@ -186,6 +186,8 @@ github.com/lpabon/godbc v0.1.1/go.mod h1:Jo9QV0cf3U6jZABgiJ2skINAXb9j8m51r07g4KI
 github.com/magiconair/properties v0.0.0-20160816085511-61b492c03cf4/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/mailru/easyjson v0.0.0-20180823135443-60711f1a8329 h1:2gxZ0XQIU/5z3Z3bUBu+FXuk2pFbkN6tcwi/pjyaDic=
 github.com/mailru/easyjson v0.0.0-20180823135443-60711f1a8329/go.mod h1:C1wdFJiN94OJF2b5HbByQZoLdCWB1Yqtg26g4irojpc=
+github.com/mandelsoft/gcfg v1.2.4-0.20191118112722-f0b8a49fc708 h1:cxxY/DeW/AbQyfiOTmghzP9i0AwrspZqptfznx1kyrQ=
+github.com/mandelsoft/gcfg v1.2.4-0.20191118112722-f0b8a49fc708/go.mod h1:A7je6bZ69LA1oehdqL7LjeL8hlKKUInBpTDaMkOBYYE=
 github.com/marstr/guid v0.0.0-20170427235115-8bdf7d1a087c/go.mod h1:74gB1z2wpxxInTG6yaqA7KrtM0NZ+RbrcqDvYHefzho=
 github.com/mattn/go-shellwords v0.0.0-20180605041737-f8471b0a71de/go.mod h1:3xCvwCdWdlDJUrvuMn7Wuy9eWs4pE8vqg+NOMyg4B2o=
 github.com/matttproud/golang_protobuf_extensions v1.0.1 h1:4hp9jkHxhMHkqkrB3Ix0jegS5sx/RkqARlsWZ6pIwiU=

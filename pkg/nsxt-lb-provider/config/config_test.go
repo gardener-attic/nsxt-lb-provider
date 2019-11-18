@@ -27,7 +27,10 @@ func TestReadConfig(t *testing.T) {
 [LoadBalancer]
 ipPoolName = pool1
 size = MEDIUM
-tags = tag1=value1,tag2=value2
+
+[Tags]
+tag1 = value1
+tag2 = value2
 
 [NSX-T]
 user = admin
@@ -46,8 +49,8 @@ host = nsxt-server
 	if config.LoadBalancer.Size != "MEDIUM" {
 		t.Errorf("size %s != %s", config.LoadBalancer.Size, "MEDIUM")
 	}
-	if config.LoadBalancer.AdditionalTags != "tag1=value1,tag2=value2" {
-		t.Errorf("additionalTags %s != %s", config.LoadBalancer.AdditionalTags, "tag1=value1,tag2=value2")
+	if len(config.AdditionalTags) != 2 || config.AdditionalTags["tag1"] != "value1" || config.AdditionalTags["tag2"] != "value2" {
+		t.Errorf("unexpected additionalTags %v", config.AdditionalTags)
 	}
 	if config.NSXT.User != "admin" {
 		t.Errorf("NSX-T.user %s != %s", config.NSXT.User, "admin")

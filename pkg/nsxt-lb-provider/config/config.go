@@ -44,14 +44,14 @@ var SizeToMaxVirtualServers = map[string]int{
 }
 
 type Config struct {
-	LoadBalancer LoadBalancerConfig `gcfg:"LoadBalancer"`
-	NSXT         NsxtConfig         `gcfg:"NSX-T"`
+	LoadBalancer   LoadBalancerConfig `gcfg:"LoadBalancer"`
+	NSXT           NsxtConfig         `gcfg:"NSX-T"`
+	AdditionalTags map[string]string  `gcfg:"Tags"`
 }
 
 type LoadBalancerConfig struct {
-	IPPoolName     string `gcfg:"ipPoolName"`
-	Size           string `gcfg:"size"`
-	AdditionalTags string `gcfg:"tags"`
+	IPPoolName string `gcfg:"ipPoolName"`
+	Size       string `gcfg:"size"`
 }
 
 // Config is used to read and store information from the cloud configuration file

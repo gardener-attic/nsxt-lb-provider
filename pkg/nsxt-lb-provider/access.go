@@ -26,7 +26,6 @@ import (
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	"github.com/vmware/go-vmware-nsxt/manager"
 	"net/http"
-	"strings"
 )
 
 const (
@@ -54,11 +53,7 @@ func NewAccess(client *nsxt.APIClient, config *config.Config) (Access, error) {
 		return nil, err
 	}
 	standardTags := []common.Tag{ownerTag}
-	tags, err := microParseTags(config.LoadBalancer.AdditionalTags)
-	if err != nil {
-		return nil, errors.Wrapf(err, "parsing additionalTags %s failed (expected format tag1=value1,tag2=value2", config.LoadBalancer.AdditionalTags)
-	}
-	for k, v := range tags {
+	for k, v := range config.AdditionalTags {
 		standardTags = append(standardTags, common.Tag{Scope: k, Tag: v})
 	}
 	return &access{
@@ -67,18 +62,6 @@ func NewAccess(client *nsxt.APIClient, config *config.Config) (Access, error) {
 		ipPoolID:     poolID,
 		standardTags: standardTags,
 	}, nil
-}
-
-func microParseTags(tags string) (map[string]string, error) {
-	result := map[string]string{}
-	for _, part := range strings.Split(tags, ",") {
-		tuple := strings.Split(part, "=")
-		if len(tuple) != 2 {
-			return nil, fmt.Errorf("invalid part %s", part)
-		}
-		result[tuple[0]] = tuple[1]
-	}
-	return result, nil
 }
 
 func findIPPoolByName(client *nsxt.APIClient, poolName string) (string, error) {
