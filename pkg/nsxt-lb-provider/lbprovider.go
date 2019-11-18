@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
+	"strings"
 
 	"github.com/gardener/nsxt-lb-provider/pkg/nsxt-lb-provider/config"
 	nsxt "github.com/vmware/go-vmware-nsxt"
@@ -29,8 +30,13 @@ import (
 	cloudprovider "k8s.io/cloud-provider"
 )
 
+const (
+	AnnotLoadBalancerClass = "loadbalancer.vsphere.class"
+)
+
 type lbProvider struct {
 	access  Access
+	classes map[string]*loadBalancerClass
 	keyLock *KeyLock
 }
 
@@ -71,7 +77,11 @@ func newLBProvider(config *config.Config) (*lbProvider, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "creating access handler failed")
 	}
-	return &lbProvider{access: access, keyLock: NewKeyLock()}, nil
+	classes, err := setupClasses(access, config)
+	if err != nil {
+		return nil, errors.Wrap(err, "creating load balancer classes failed")
+	}
+	return &lbProvider{access: access, classes: classes, keyLock: NewKeyLock()}, nil
 }
 
 func (p *lbProvider) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
@@ -118,7 +128,11 @@ func (p *lbProvider) EnsureLoadBalancer(ctx context.Context, clusterName string,
 	p.keyLock.Lock(key)
 	defer p.keyLock.Unlock(key)
 
-	state, err := newState(clusterName, service, p.access)
+	class, err := p.classFromService(service)
+	if err != nil {
+		return nil, err
+	}
+	state, err := newState(clusterName, service, p.access, class)
 	if err != nil {
 		return nil, err
 	}
@@ -161,6 +175,24 @@ func (p *lbProvider) EnsureLoadBalancer(ctx context.Context, clusterName string,
 	return state.finish()
 }
 
+func (p *lbProvider) classFromService(service *corev1.Service) (*loadBalancerClass, error) {
+	annos := service.GetAnnotations()
+	if annos == nil {
+		annos = map[string]string{}
+	}
+	name, ok := annos[AnnotLoadBalancerClass]
+	name = strings.TrimSpace(name)
+	if !ok || name == "" {
+		name = config.DefaultLoadBalancerClass
+	}
+
+	class := p.classes[name]
+	if class == nil {
+		return nil, fmt.Errorf("invalid load balancer class %s", name)
+	}
+	return class, nil
+}
+
 func (p *lbProvider) createVirtualServer(mapping Mapping, nodes []*corev1.Node, state *state) error {
 	lbService, err := p.access.FindFreeLoadBalancerService(state.clusterName)
 	if err != nil {
@@ -176,7 +208,7 @@ func (p *lbProvider) createVirtualServer(mapping Mapping, nodes []*corev1.Node, 
 	if err != nil {
 		return err
 	}
-	vserver, err := p.access.CreateVirtualServer(state.clusterName, objectNameFromService(state.service), state.ipAddress, mapping, state.poolID)
+	vserver, err := p.access.CreateVirtualServer(state.clusterName, objectNameFromService(state.service), state.class, state.ipAddress, mapping, state.poolID)
 	if err != nil {
 		_, _ = state.finish()
 		return err

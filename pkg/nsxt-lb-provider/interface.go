@@ -18,6 +18,7 @@
 package nsxt_lb_provider
 
 import (
+	"github.com/vmware/go-vmware-nsxt/common"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 )
 
@@ -28,7 +29,7 @@ type Access interface {
 	UpdateLoadBalancerService(lbService *loadbalancer.LbService) error
 	DeleteLoadBalancerService(id string) error
 
-	CreateVirtualServer(clusterName string, objectName ObjectName, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error)
+	CreateVirtualServer(clusterName string, objectName ObjectName, tags TagSource, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error)
 	FindVirtualServers(clusterName string, objectName ObjectName) ([]*loadbalancer.LbVirtualServer, error)
 	ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtualServer, error)
 	UpdateVirtualServer(server *loadbalancer.LbVirtualServer) error
@@ -41,7 +42,21 @@ type Access interface {
 	UpdatePool(*loadbalancer.LbPool) error
 	DeletePool(id string) error
 
-	AllocateExternalIPAddress() (string, error)
-	IsAllocatedExternalIPAddress(address string) (bool, error)
-	ReleaseExternalIPAddress(address string) error
+	FindIPPoolByName(poolName string) (string, error)
+
+	AllocateExternalIPAddress(ipPoolID string) (string, error)
+	IsAllocatedExternalIPAddress(ipPoolID string, address string) (bool, error)
+	ReleaseExternalIPAddress(ipPoolID string, address string) error
 }
+
+type TagSource interface {
+	Tags() []common.Tag
+}
+
+type TagsSourceFunc func() []common.Tag
+
+func (n TagsSourceFunc) Tags() []common.Tag {
+	return n()
+}
+
+var EmptyTagsSource = TagsSourceFunc(func() []common.Tag { return []common.Tag{} })

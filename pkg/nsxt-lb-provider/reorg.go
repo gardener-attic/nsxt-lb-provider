@@ -19,7 +19,6 @@ package nsxt_lb_provider
 
 import (
 	"context"
-	"github.com/vmware/go-vmware-nsxt/common"
 	"strings"
 	"time"
 
@@ -128,13 +127,4 @@ func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
 		}
 	}
 	return nil
-}
-
-func getTag(tags []common.Tag, scope string) string {
-	for _, tag := range tags {
-		if tag.Scope == scope {
-			return tag.Tag
-		}
-	}
-	return ""
 }

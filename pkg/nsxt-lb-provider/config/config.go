@@ -35,6 +35,8 @@ const (
 	DefaultMaxRetries    = 30
 	DefaultRetryMinDelay = 500
 	DefaultRetryMaxDelay = 5000
+
+	DefaultLoadBalancerClass = "default"
 )
 
 var SizeToMaxVirtualServers = map[string]int{
@@ -44,13 +46,15 @@ var SizeToMaxVirtualServers = map[string]int{
 }
 
 type Config struct {
-	LoadBalancer   LoadBalancerConfig `gcfg:"LoadBalancer"`
-	NSXT           NsxtConfig         `gcfg:"NSX-T"`
-	AdditionalTags map[string]string  `gcfg:"Tags"`
+	LoadBalancer      *LoadBalancerConfig            `gcfg:"LoadBalancer"`
+	LoadBalancerClass map[string]*LoadBalancerConfig `gcfg:"LoadBalancerClass"`
+	NSXT              NsxtConfig                     `gcfg:"NSX-T"`
+	AdditionalTags    map[string]string              `gcfg:"Tags"`
 }
 
 type LoadBalancerConfig struct {
 	IPPoolName string `gcfg:"ipPoolName"`
+	IPPoolID   string `gcfg:"ipPoolID"`
 	Size       string `gcfg:"size"`
 }
 
@@ -75,15 +79,35 @@ type NsxtConfig struct {
 }
 
 func (cfg *Config) validateConfig() error {
-	if _, ok := SizeToMaxVirtualServers[cfg.LoadBalancer.Size]; !ok {
-		msg := "load balancer size is invalid"
-		klog.Errorf(msg)
-		return fmt.Errorf(msg)
+	if cfg.LoadBalancer == nil {
+		if _, ok := cfg.LoadBalancerClass[DefaultLoadBalancerClass]; !ok {
+			msg := "no default load balancer class defined"
+			klog.Errorf(msg)
+			return fmt.Errorf(msg)
+		}
+	} else {
+		if _, ok := SizeToMaxVirtualServers[cfg.LoadBalancer.Size]; !ok {
+			msg := "load balancer size is invalid"
+			klog.Errorf(msg)
+			return fmt.Errorf(msg)
+		}
+		if cfg.LoadBalancer.IPPoolName == "" && cfg.LoadBalancer.IPPoolID == "" {
+			msg := "load balancer ipPoolName and ipPoolID is empty"
+			klog.Errorf(msg)
+			return fmt.Errorf(msg)
+		}
 	}
-	if cfg.LoadBalancer.IPPoolName == "" {
-		msg := "load balancer ipPoolName is empty"
-		klog.Errorf(msg)
-		return fmt.Errorf(msg)
+	for name, class := range cfg.LoadBalancerClass {
+		if _, ok := SizeToMaxVirtualServers[class.Size]; !ok {
+			msg := fmt.Sprintf("load balancer class %s: size is invalid", name)
+			klog.Error(msg)
+			return fmt.Errorf(msg)
+		}
+		if class.IPPoolName == "" && class.IPPoolID == "" {
+			msg := fmt.Sprintf("load balancer class %s: ipPoolName and ipPoolID is empty", name)
+			klog.Error(msg)
+			return fmt.Errorf(msg)
+		}
 	}
 	return cfg.NSXT.validateConfig()
 }
@@ -204,6 +228,24 @@ func ReadConfig(config io.Reader) (*Config, error) {
 	}
 	if cfg.NSXT.RetryMaxDelay == 0 {
 		cfg.NSXT.RetryMaxDelay = DefaultRetryMaxDelay
+	}
+	if cfg.LoadBalancerClass == nil {
+		cfg.LoadBalancerClass = map[string]*LoadBalancerConfig{}
+	}
+	for _, class := range cfg.LoadBalancerClass {
+		if class.IPPoolName == "" {
+			if class.IPPoolID == "" {
+				if cfg.LoadBalancer != nil {
+					class.IPPoolID = cfg.LoadBalancer.IPPoolID
+					class.IPPoolName = cfg.LoadBalancer.IPPoolName
+				}
+			}
+		}
+		if class.Size == "" {
+			if cfg.LoadBalancer != nil {
+				class.Size = cfg.LoadBalancer.Size
+			}
+		}
 	}
 
 	// Env Vars should override config file entries if present

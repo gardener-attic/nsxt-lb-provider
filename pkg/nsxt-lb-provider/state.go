@@ -18,6 +18,7 @@
 package nsxt_lb_provider
 
 import (
+	"github.com/gardener/nsxt-lb-provider/pkg/nsxt-lb-provider/config"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -30,9 +31,10 @@ type state struct {
 	ipAddress   string
 	poolID      string
 	pool        *loadbalancer.LbPool
+	class       *loadBalancerClass
 }
 
-func newState(clusterName string, service *corev1.Service, access Access) (*state, error) {
+func newState(clusterName string, service *corev1.Service, access Access, class *loadBalancerClass) (*state, error) {
 	var err error
 	state := &state{access: access, clusterName: clusterName, service: service}
 	state.servers, err = access.FindVirtualServers(clusterName, objectNameFromService(service))
@@ -45,7 +47,19 @@ func newState(clusterName string, service *corev1.Service, access Access) (*stat
 	if len(state.servers) > 0 {
 		state.ipAddress = state.servers[0].IpAddress
 		state.poolID = state.servers[0].PoolId
+		className := getTag(state.servers[0].Tags, ScopeLBClass)
+		ipPoolID := getTag(state.servers[0].Tags, ScopeIPPoolID)
+		if class.className != className || class.ipPoolID != ipPoolID {
+			class, err = newLbClass(access, className, &config.LoadBalancerConfig{
+				IPPoolID: ipPoolID,
+				Size:     class.size,
+			})
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
+	state.class = class
 
 	if state.poolID == "" {
 		state.pool, err = access.FindPool(clusterName, objectNameFromService(service))
@@ -79,7 +93,7 @@ func (s *state) initialize() error {
 		s.poolID = s.pool.Id
 	}
 	if s.ipAddress == "" {
-		s.ipAddress, err = s.access.AllocateExternalIPAddress()
+		s.ipAddress, err = s.access.AllocateExternalIPAddress(s.class.ipPoolID)
 		if err != nil {
 			return err
 		}
@@ -90,12 +104,12 @@ func (s *state) initialize() error {
 func (s *state) finish() (*corev1.LoadBalancerStatus, error) {
 	if len(s.service.Spec.Ports) == 0 {
 		if s.ipAddress != "" {
-			exists, err := s.access.IsAllocatedExternalIPAddress(s.ipAddress)
+			exists, err := s.access.IsAllocatedExternalIPAddress(s.class.ipPoolID, s.ipAddress)
 			if err != nil {
 				return nil, err
 			}
 			if exists {
-				err = s.access.ReleaseExternalIPAddress(s.ipAddress)
+				err = s.access.ReleaseExternalIPAddress(s.class.ipPoolID, s.ipAddress)
 				if err != nil {
 					return nil, err
 				}

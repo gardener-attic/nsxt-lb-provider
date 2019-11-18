@@ -29,15 +29,16 @@ import (
 )
 
 const (
-	ScopeOwner   = "owner"
-	ScopeCluster = "cluster"
-	ScopeService = "service"
+	ScopeOwner    = "owner"
+	ScopeCluster  = "cluster"
+	ScopeService  = "service"
+	ScopeIPPoolID = "ippoolid"
+	ScopeLBClass  = "lbclass"
 )
 
 type access struct {
 	nsxClient    *nsxt.APIClient
 	config       *config.Config
-	ipPoolID     string
 	standardTags []common.Tag
 }
 
@@ -48,10 +49,6 @@ var (
 var _ Access = &access{}
 
 func NewAccess(client *nsxt.APIClient, config *config.Config) (Access, error) {
-	poolID, err := findIPPoolByName(client, config.LoadBalancer.IPPoolName)
-	if err != nil {
-		return nil, err
-	}
 	standardTags := []common.Tag{ownerTag}
 	for k, v := range config.AdditionalTags {
 		standardTags = append(standardTags, common.Tag{Scope: k, Tag: v})
@@ -59,13 +56,12 @@ func NewAccess(client *nsxt.APIClient, config *config.Config) (Access, error) {
 	return &access{
 		nsxClient:    client,
 		config:       config,
-		ipPoolID:     poolID,
 		standardTags: standardTags,
 	}, nil
 }
 
-func findIPPoolByName(client *nsxt.APIClient, poolName string) (string, error) {
-	objList, _, err := client.PoolManagementApi.ListIpPools(client.Context, nil)
+func (a *access) FindIPPoolByName(poolName string) (string, error) {
+	objList, _, err := a.nsxClient.PoolManagementApi.ListIpPools(a.nsxClient.Context, nil)
 	if err != nil {
 		return "", errors.Wrap(err, "listing IP pools failed")
 	}
@@ -124,32 +120,6 @@ func (a *access) FindLoadBalancerServiceForVirtualServer(clusterName string, ser
 	})
 }
 
-func clusterTag(clusterName string) common.Tag {
-	return common.Tag{Scope: ScopeCluster, Tag: clusterName}
-}
-
-func serviceTag(objectName ObjectName) common.Tag {
-	return common.Tag{Scope: ScopeService, Tag: objectName.String()}
-}
-
-func checkTags(tags []common.Tag, required ...common.Tag) bool {
-	for _, tag := range tags {
-		found := false
-		for _, req := range required {
-			if tag.Scope == req.Scope {
-				found = true
-				if tag.Tag != req.Tag {
-					return false
-				}
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
-}
-
 func (a *access) UpdateLoadBalancerService(lbService *loadbalancer.LbService) error {
 	_, _, err := a.nsxClient.ServicesApi.UpdateLoadBalancerService(a.nsxClient.Context, lbService.Id, *lbService)
 	if err != nil {
@@ -169,12 +139,12 @@ func (a *access) DeleteLoadBalancerService(id string) error {
 	return nil
 }
 
-func (a *access) CreateVirtualServer(clusterName string, objectName ObjectName, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error) {
+func (a *access) CreateVirtualServer(clusterName string, objectName ObjectName, tags TagSource, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error) {
 	virtualServer := loadbalancer.LbVirtualServer{
 		Description: fmt.Sprintf("virtual server for cluster %s, service %s created by %s",
 			clusterName, objectName, AppName),
 		DisplayName:           fmt.Sprintf("cluster:%s:%s", clusterName, objectName),
-		Tags:                  append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)),
+		Tags:                  append(append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)), tags.Tags()...),
 		DefaultPoolMemberPort: fmt.Sprintf("%d", mapping.NodePort),
 		Enabled:               true,
 		IpAddress:             ipAddress,
@@ -305,9 +275,9 @@ func (a *access) DeletePool(id string) error {
 	return nil
 }
 
-func (a *access) AllocateExternalIPAddress() (string, error) {
+func (a *access) AllocateExternalIPAddress(ipPoolID string) (string, error) {
 	allocationIPAddress, resp, err := a.nsxClient.PoolManagementApi.AllocateOrReleaseFromIpPool(a.nsxClient.Context,
-		a.ipPoolID, manager.AllocationIpAddress{}, "ALLOCATE")
+		ipPoolID, manager.AllocationIpAddress{}, "ALLOCATE")
 	if err != nil {
 		return "", errors.Wrapf(err, "allocating external IP address failed")
 	}
@@ -317,18 +287,18 @@ func (a *access) AllocateExternalIPAddress() (string, error) {
 	return allocationIPAddress.AllocationId, nil
 }
 
-func (a *access) IsAllocatedExternalIPAddress(ipAddress string) (bool, error) {
-	resultList, resp, err := a.nsxClient.PoolManagementApi.ListIpPoolAllocations(a.nsxClient.Context, a.ipPoolID)
+func (a *access) IsAllocatedExternalIPAddress(ipPoolID string, ipAddress string) (bool, error) {
+	resultList, resp, err := a.nsxClient.PoolManagementApi.ListIpPoolAllocations(a.nsxClient.Context, ipPoolID)
 	if resp != nil && resp.StatusCode == http.StatusNotFound {
 		return false, nil
 	}
 	if err != nil {
 		return false, errors.Wrapf(err, "listing IP addresses from load balancer IP pool %s (%s) failed",
-			a.config.LoadBalancer.IPPoolName, a.ipPoolID)
+			a.config.LoadBalancer.IPPoolName, ipPoolID)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("unexpected status code %d returned on listing IP addresses from load balancer IP pool %s (%s)",
-			resp.StatusCode, a.config.LoadBalancer.IPPoolName, a.ipPoolID)
+			resp.StatusCode, a.config.LoadBalancer.IPPoolName, ipPoolID)
 	}
 
 	for _, address := range resultList.Results {
@@ -339,13 +309,13 @@ func (a *access) IsAllocatedExternalIPAddress(ipAddress string) (bool, error) {
 	return false, nil
 }
 
-func (a *access) ReleaseExternalIPAddress(address string) error {
+func (a *access) ReleaseExternalIPAddress(ipPoolID string, address string) error {
 	allocationIpAddress := manager.AllocationIpAddress{AllocationId: address}
-	_, resp, err := a.nsxClient.PoolManagementApi.AllocateOrReleaseFromIpPool(a.nsxClient.Context, a.ipPoolID,
+	_, resp, err := a.nsxClient.PoolManagementApi.AllocateOrReleaseFromIpPool(a.nsxClient.Context, ipPoolID,
 		allocationIpAddress, "RELEASE")
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code %d returned releasing IP address %s from load balancer IP pool %s (%s)",
-			resp.StatusCode, address, a.config.LoadBalancer.IPPoolName, a.ipPoolID)
+			resp.StatusCode, address, a.config.LoadBalancer.IPPoolName, ipPoolID)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "releasing external IP address %s failed", address)
