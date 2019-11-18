@@ -26,6 +26,7 @@ import (
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	"github.com/vmware/go-vmware-nsxt/manager"
 	"net/http"
+	"strings"
 )
 
 const (
@@ -48,12 +49,16 @@ var (
 var _ Access = &access{}
 
 func NewAccess(client *nsxt.APIClient, config *config.Config) (Access, error) {
-	poolID, err := findIPPoolByName(client, config.LoadBalancerIPPoolName)
+	poolID, err := findIPPoolByName(client, config.LoadBalancer.IPPoolName)
 	if err != nil {
 		return nil, err
 	}
 	standardTags := []common.Tag{ownerTag}
-	for k, v := range config.Tags {
+	tags, err := microParseTags(config.LoadBalancer.AdditionalTags)
+	if err != nil {
+		return nil, errors.Wrapf(err, "parsing additionalTags %s failed (expected format tag1=value1,tag2=value2", config.LoadBalancer.AdditionalTags)
+	}
+	for k, v := range tags {
 		standardTags = append(standardTags, common.Tag{Scope: k, Tag: v})
 	}
 	return &access{
@@ -62,6 +67,18 @@ func NewAccess(client *nsxt.APIClient, config *config.Config) (Access, error) {
 		ipPoolID:     poolID,
 		standardTags: standardTags,
 	}, nil
+}
+
+func microParseTags(tags string) (map[string]string, error) {
+	result := map[string]string{}
+	for _, part := range strings.Split(tags, ",") {
+		tuple := strings.Split(part, "=")
+		if len(tuple) != 2 {
+			return nil, fmt.Errorf("invalid part %s", part)
+		}
+		result[tuple[0]] = tuple[1]
+	}
+	return result, nil
 }
 
 func findIPPoolByName(client *nsxt.APIClient, poolName string) (string, error) {
@@ -82,7 +99,7 @@ func (a *access) CreateLoadBalancerService(clusterName string) (*loadbalancer.Lb
 		Description: fmt.Sprintf("virtual server pool for cluster %s created by %s", clusterName, AppName),
 		DisplayName: fmt.Sprintf("cluster:%s", clusterName),
 		Tags:        append(a.standardTags, clusterTag(clusterName)),
-		Size:        a.config.LoadBalancerSize,
+		Size:        a.config.LoadBalancer.Size,
 	}
 	result, _, err := a.nsxClient.ServicesApi.CreateLoadBalancerService(a.nsxClient.Context, lbService)
 	if err != nil {
@@ -324,11 +341,11 @@ func (a *access) IsAllocatedExternalIPAddress(ipAddress string) (bool, error) {
 	}
 	if err != nil {
 		return false, errors.Wrapf(err, "listing IP addresses from load balancer IP pool %s (%s) failed",
-			a.config.LoadBalancerIPPoolName, a.ipPoolID)
+			a.config.LoadBalancer.IPPoolName, a.ipPoolID)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return false, fmt.Errorf("unexpected status code %d returned on listing IP addresses from load balancer IP pool %s (%s)",
-			resp.StatusCode, a.config.LoadBalancerIPPoolName, a.ipPoolID)
+			resp.StatusCode, a.config.LoadBalancer.IPPoolName, a.ipPoolID)
 	}
 
 	for _, address := range resultList.Results {
@@ -345,7 +362,7 @@ func (a *access) ReleaseExternalIPAddress(address string) error {
 		allocationIpAddress, "RELEASE")
 	if resp != nil && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code %d returned releasing IP address %s from load balancer IP pool %s (%s)",
-			resp.StatusCode, address, a.config.LoadBalancerIPPoolName, a.ipPoolID)
+			resp.StatusCode, address, a.config.LoadBalancer.IPPoolName, a.ipPoolID)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "releasing external IP address %s failed", address)

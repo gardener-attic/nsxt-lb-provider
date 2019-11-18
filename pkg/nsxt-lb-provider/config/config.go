@@ -31,6 +31,10 @@ const (
 	SizeSmall  = "SMALL"
 	SizeMedium = "MEDIUM"
 	SizeLarge  = "LARGE"
+
+	DefaultMaxRetries    = 30
+	DefaultRetryMinDelay = 500
+	DefaultRetryMaxDelay = 5000
 )
 
 var SizeToMaxVirtualServers = map[string]int{
@@ -40,10 +44,14 @@ var SizeToMaxVirtualServers = map[string]int{
 }
 
 type Config struct {
-	LoadBalancerIPPoolName string            `gcfg:"ipPoolName"`
-	LoadBalancerSize       string            `gcfg:"size"`
-	Tags                   map[string]string `gcfg:"tags"`
-	NSXT                   NsxtConfig        `gcfg:"nsxt"`
+	LoadBalancer LoadBalancerConfig `gcfg:"LoadBalancer"`
+	NSXT         NsxtConfig         `gcfg:"NSX-T"`
+}
+
+type LoadBalancerConfig struct {
+	IPPoolName     string `gcfg:"ipPoolName"`
+	Size           string `gcfg:"size"`
+	AdditionalTags string `gcfg:"tags"`
 }
 
 // Config is used to read and store information from the cloud configuration file
@@ -67,12 +75,12 @@ type NsxtConfig struct {
 }
 
 func (cfg *Config) validateConfig() error {
-	if _, ok := SizeToMaxVirtualServers[cfg.LoadBalancerSize]; !ok {
+	if _, ok := SizeToMaxVirtualServers[cfg.LoadBalancer.Size]; !ok {
 		msg := "load balancer size is invalid"
 		klog.Errorf(msg)
 		return fmt.Errorf(msg)
 	}
-	if cfg.LoadBalancerIPPoolName == "" {
+	if cfg.LoadBalancer.IPPoolName == "" {
 		msg := "load balancer ipPoolName is empty"
 		klog.Errorf(msg)
 		return fmt.Errorf(msg)
@@ -189,13 +197,13 @@ func ReadConfig(config io.Reader) (*Config, error) {
 		return nil, err
 	}
 	if cfg.NSXT.MaxRetries == 0 {
-		cfg.NSXT.MaxRetries = 30
+		cfg.NSXT.MaxRetries = DefaultMaxRetries
 	}
 	if cfg.NSXT.RetryMinDelay == 0 {
-		cfg.NSXT.RetryMinDelay = 500
+		cfg.NSXT.RetryMinDelay = DefaultRetryMinDelay
 	}
 	if cfg.NSXT.RetryMaxDelay == 0 {
-		cfg.NSXT.RetryMaxDelay = 5000
+		cfg.NSXT.RetryMaxDelay = DefaultRetryMaxDelay
 	}
 
 	// Env Vars should override config file entries if present
