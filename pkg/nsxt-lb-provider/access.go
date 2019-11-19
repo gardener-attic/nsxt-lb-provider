@@ -21,10 +21,8 @@ import (
 	"fmt"
 	"github.com/gardener/nsxt-lb-provider/pkg/nsxt-lb-provider/config"
 	"github.com/pkg/errors"
-	nsxt "github.com/vmware/go-vmware-nsxt"
 	"github.com/vmware/go-vmware-nsxt/common"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
-	"github.com/vmware/go-vmware-nsxt/manager"
 	"net/http"
 )
 
@@ -37,7 +35,7 @@ const (
 )
 
 type access struct {
-	nsxClient    *nsxt.APIClient
+	broker       NsxtBroker
 	config       *config.Config
 	standardTags []common.Tag
 }
@@ -48,20 +46,20 @@ var (
 
 var _ Access = &access{}
 
-func NewAccess(client *nsxt.APIClient, config *config.Config) (Access, error) {
+func NewAccess(broker NsxtBroker, config *config.Config) (Access, error) {
 	standardTags := []common.Tag{ownerTag}
 	for k, v := range config.AdditionalTags {
 		standardTags = append(standardTags, common.Tag{Scope: k, Tag: v})
 	}
 	return &access{
-		nsxClient:    client,
+		broker:       broker,
 		config:       config,
 		standardTags: standardTags,
 	}, nil
 }
 
 func (a *access) FindIPPoolByName(poolName string) (string, error) {
-	objList, _, err := a.nsxClient.PoolManagementApi.ListIpPools(a.nsxClient.Context, nil)
+	objList, err := a.broker.ListIpPools()
 	if err != nil {
 		return "", errors.Wrap(err, "listing IP pools failed")
 	}
@@ -80,7 +78,7 @@ func (a *access) CreateLoadBalancerService(clusterName string) (*loadbalancer.Lb
 		Tags:        append(a.standardTags, clusterTag(clusterName)),
 		Size:        a.config.LoadBalancer.Size,
 	}
-	result, _, err := a.nsxClient.ServicesApi.CreateLoadBalancerService(a.nsxClient.Context, lbService)
+	result, err := a.broker.CreateLoadBalancerService(lbService)
 	if err != nil {
 		return nil, errors.Wrapf(err, "creating load balancer service failed for cluster %s", clusterName)
 	}
@@ -97,7 +95,7 @@ func (a *access) FindFreeLoadBalancerService(clusterName string) (*loadbalancer.
 type selector func(*loadbalancer.LbService) bool
 
 func (a *access) findLoadBalancerService(clusterName string, f selector) (*loadbalancer.LbService, error) {
-	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerServices(a.nsxClient.Context, nil)
+	list, err := a.broker.ListLoadBalancerServices()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing load balancer services failed")
 	}
@@ -121,7 +119,7 @@ func (a *access) FindLoadBalancerServiceForVirtualServer(clusterName string, ser
 }
 
 func (a *access) UpdateLoadBalancerService(lbService *loadbalancer.LbService) error {
-	_, _, err := a.nsxClient.ServicesApi.UpdateLoadBalancerService(a.nsxClient.Context, lbService.Id, *lbService)
+	_, err := a.broker.UpdateLoadBalancerService(*lbService)
 	if err != nil {
 		return errors.Wrapf(err, "updating load balancer service %s (%s) failed", lbService.DisplayName, lbService.Id)
 	}
@@ -129,8 +127,8 @@ func (a *access) UpdateLoadBalancerService(lbService *loadbalancer.LbService) er
 }
 
 func (a *access) DeleteLoadBalancerService(id string) error {
-	resp, err := a.nsxClient.ServicesApi.DeleteLoadBalancerService(a.nsxClient.Context, id)
-	if resp != nil && resp.StatusCode == http.StatusNotFound {
+	statusCode, err := a.broker.DeleteLoadBalancerService(id)
+	if statusCode == http.StatusNotFound {
 		return nil
 	}
 	if err != nil {
@@ -152,7 +150,7 @@ func (a *access) CreateVirtualServer(clusterName string, objectName ObjectName, 
 		PoolId:                poolID,
 		Port:                  fmt.Sprintf("%d", mapping.SourcePort),
 	}
-	result, _, err := a.nsxClient.ServicesApi.CreateLoadBalancerVirtualServer(a.nsxClient.Context, virtualServer)
+	result, err := a.broker.CreateLoadBalancerVirtualServer(virtualServer)
 	if err != nil {
 		return nil, errors.Wrapf(err, "creating virtual server failed for %s:%s with IP address %s", clusterName, objectName, ipAddress)
 	}
@@ -160,7 +158,7 @@ func (a *access) CreateVirtualServer(clusterName string, objectName ObjectName, 
 }
 
 func (a *access) FindVirtualServers(clusterName string, objectName ObjectName) ([]*loadbalancer.LbVirtualServer, error) {
-	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerVirtualServers(a.nsxClient.Context, nil)
+	list, err := a.broker.ListLoadBalancerVirtualServers()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing virtual servers failed")
 	}
@@ -174,7 +172,7 @@ func (a *access) FindVirtualServers(clusterName string, objectName ObjectName) (
 }
 
 func (a *access) ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtualServer, error) {
-	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerVirtualServers(a.nsxClient.Context, nil)
+	list, err := a.broker.ListLoadBalancerVirtualServers()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing virtual servers failed")
 	}
@@ -188,7 +186,7 @@ func (a *access) ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtu
 }
 
 func (a *access) UpdateVirtualServer(server *loadbalancer.LbVirtualServer) error {
-	_, _, err := a.nsxClient.ServicesApi.UpdateLoadBalancerVirtualServer(a.nsxClient.Context, server.Id, *server)
+	_, err := a.broker.UpdateLoadBalancerVirtualServer(*server)
 	if err != nil {
 		return errors.Wrapf(err, "updating load balancer virtual server %s (%s) failed", server.DisplayName, server.Id)
 	}
@@ -196,8 +194,8 @@ func (a *access) UpdateVirtualServer(server *loadbalancer.LbVirtualServer) error
 }
 
 func (a *access) DeleteVirtualServer(id string) error {
-	resp, err := a.nsxClient.ServicesApi.DeleteLoadBalancerVirtualServer(a.nsxClient.Context, id, nil)
-	if resp != nil && resp.StatusCode == http.StatusNotFound {
+	statusCode, err := a.broker.DeleteLoadBalancerVirtualServer(id)
+	if statusCode == http.StatusNotFound {
 		return nil
 	}
 	if err != nil {
@@ -214,7 +212,7 @@ func (a *access) CreatePool(clusterName string, objectName ObjectName) (*loadbal
 		Tags:        append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)),
 		Members:     []loadbalancer.PoolMember{},
 	}
-	result, _, err := a.nsxClient.ServicesApi.CreateLoadBalancerPool(a.nsxClient.Context, pool)
+	result, err := a.broker.CreateLoadBalancerPool(pool)
 	if err != nil {
 		return nil, errors.Wrapf(err, "creating pool failed for %s:%s", clusterName, objectName)
 	}
@@ -222,7 +220,7 @@ func (a *access) CreatePool(clusterName string, objectName ObjectName) (*loadbal
 }
 
 func (a *access) GetPool(id string) (*loadbalancer.LbPool, error) {
-	pool, _, err := a.nsxClient.ServicesApi.ReadLoadBalancerPool(a.nsxClient.Context, id)
+	pool, err := a.broker.ReadLoadBalancerPool(id)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +228,7 @@ func (a *access) GetPool(id string) (*loadbalancer.LbPool, error) {
 }
 
 func (a *access) FindPool(clusterName string, objectName ObjectName) (*loadbalancer.LbPool, error) {
-	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerPools(a.nsxClient.Context, nil)
+	list, err := a.broker.ListLoadBalancerPools()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing load balancer pools failed")
 	}
@@ -243,7 +241,7 @@ func (a *access) FindPool(clusterName string, objectName ObjectName) (*loadbalan
 }
 
 func (a *access) ListPools(clusterName string) ([]*loadbalancer.LbPool, error) {
-	list, _, err := a.nsxClient.ServicesApi.ListLoadBalancerPools(a.nsxClient.Context, nil)
+	list, err := a.broker.ListLoadBalancerPools()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing pools failed")
 	}
@@ -257,7 +255,7 @@ func (a *access) ListPools(clusterName string) ([]*loadbalancer.LbPool, error) {
 }
 
 func (a *access) UpdatePool(pool *loadbalancer.LbPool) error {
-	_, _, err := a.nsxClient.ServicesApi.UpdateLoadBalancerPool(a.nsxClient.Context, pool.Id, *pool)
+	_, err := a.broker.UpdateLoadBalancerPool(*pool)
 	if err != nil {
 		return errors.Wrapf(err, "updating load balancer pool %s (%s) failed", pool.DisplayName, pool.Id)
 	}
@@ -265,8 +263,8 @@ func (a *access) UpdatePool(pool *loadbalancer.LbPool) error {
 }
 
 func (a *access) DeletePool(id string) error {
-	resp, err := a.nsxClient.ServicesApi.DeleteLoadBalancerPool(a.nsxClient.Context, id)
-	if resp != nil && resp.StatusCode == http.StatusNotFound {
+	statusCode, err := a.broker.DeleteLoadBalancerPool(id)
+	if statusCode == http.StatusNotFound {
 		return nil
 	}
 	if err != nil {
@@ -276,33 +274,32 @@ func (a *access) DeletePool(id string) error {
 }
 
 func (a *access) AllocateExternalIPAddress(ipPoolID string) (string, error) {
-	allocationIPAddress, resp, err := a.nsxClient.PoolManagementApi.AllocateOrReleaseFromIpPool(a.nsxClient.Context,
-		ipPoolID, manager.AllocationIpAddress{}, "ALLOCATE")
+	ipAddress, statusCode, err := a.broker.AllocateFromIpPool(ipPoolID)
 	if err != nil {
 		return "", errors.Wrapf(err, "allocating external IP address failed")
 	}
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("allocating external IP address failed with unexpected status code %d", resp.StatusCode)
+	if statusCode != http.StatusOK {
+		return "", fmt.Errorf("allocating external IP address failed with unexpected status code %d", statusCode)
 	}
-	return allocationIPAddress.AllocationId, nil
+	return ipAddress, nil
 }
 
 func (a *access) IsAllocatedExternalIPAddress(ipPoolID string, ipAddress string) (bool, error) {
-	resultList, resp, err := a.nsxClient.PoolManagementApi.ListIpPoolAllocations(a.nsxClient.Context, ipPoolID)
-	if resp != nil && resp.StatusCode == http.StatusNotFound {
+	ipAddresses, statusCode, err := a.broker.ListIpPoolAllocations(ipPoolID)
+	if statusCode == http.StatusNotFound {
 		return false, nil
 	}
 	if err != nil {
 		return false, errors.Wrapf(err, "listing IP addresses from load balancer IP pool %s (%s) failed",
 			a.config.LoadBalancer.IPPoolName, ipPoolID)
 	}
-	if resp.StatusCode != http.StatusOK {
+	if statusCode != http.StatusOK {
 		return false, fmt.Errorf("unexpected status code %d returned on listing IP addresses from load balancer IP pool %s (%s)",
-			resp.StatusCode, a.config.LoadBalancer.IPPoolName, ipPoolID)
+			statusCode, a.config.LoadBalancer.IPPoolName, ipPoolID)
 	}
 
-	for _, address := range resultList.Results {
-		if address.AllocationId == ipAddress {
+	for _, address := range ipAddresses {
+		if address == ipAddress {
 			return true, nil
 		}
 	}
@@ -310,12 +307,10 @@ func (a *access) IsAllocatedExternalIPAddress(ipPoolID string, ipAddress string)
 }
 
 func (a *access) ReleaseExternalIPAddress(ipPoolID string, address string) error {
-	allocationIpAddress := manager.AllocationIpAddress{AllocationId: address}
-	_, resp, err := a.nsxClient.PoolManagementApi.AllocateOrReleaseFromIpPool(a.nsxClient.Context, ipPoolID,
-		allocationIpAddress, "RELEASE")
-	if resp != nil && resp.StatusCode != http.StatusOK {
+	statusCode, err := a.broker.ReleaseFromIpPool(ipPoolID, address)
+	if statusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code %d returned releasing IP address %s from load balancer IP pool %s (%s)",
-			resp.StatusCode, address, a.config.LoadBalancer.IPPoolName, ipPoolID)
+			statusCode, address, a.config.LoadBalancer.IPPoolName, ipPoolID)
 	}
 	if err != nil {
 		return errors.Wrapf(err, "releasing external IP address %s failed", address)

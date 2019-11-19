@@ -46,34 +46,11 @@ var ClusterName string
 var _ cloudprovider.LoadBalancer = &lbProvider{}
 
 func newLBProvider(config *config.Config) (*lbProvider, error) {
-	nsxtConfig := config.NSXT
-	retriesConfig := nsxt.ClientRetriesConfiguration{
-		MaxRetries:      nsxtConfig.MaxRetries,
-		RetryMinDelay:   nsxtConfig.RetryMinDelay,
-		RetryMaxDelay:   nsxtConfig.RetryMaxDelay,
-		RetryOnStatuses: nsxtConfig.RetryOnStatusCodes,
-	}
-	cfg := nsxt.Configuration{
-		BasePath:             "/api/v1",
-		Host:                 nsxtConfig.Host,
-		Scheme:               "https",
-		UserAgent:            "nsxt-lb-provider/" + Version,
-		UserName:             nsxtConfig.User,
-		Password:             nsxtConfig.Password,
-		RemoteAuth:           nsxtConfig.RemoteAuth,
-		ClientAuthCertFile:   nsxtConfig.ClientAuthCertFile,
-		ClientAuthKeyFile:    nsxtConfig.ClientAuthKeyFile,
-		CAFile:               nsxtConfig.CAFile,
-		Insecure:             nsxtConfig.InsecureFlag,
-		RetriesConfiguration: retriesConfig,
-	}
-
-	nsxClient, err := nsxt.NewAPIClient(&cfg)
+	broker, err := setupNsxtBroker(&config.NSXT)
 	if err != nil {
-		return nil, errors.Wrap(err, "creating NSX-T client failed")
+		return nil, err
 	}
-
-	access, err := NewAccess(nsxClient, config)
+	access, err := NewAccess(broker, config)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating access handler failed")
 	}
@@ -82,6 +59,38 @@ func newLBProvider(config *config.Config) (*lbProvider, error) {
 		return nil, errors.Wrap(err, "creating load balancer classes failed")
 	}
 	return &lbProvider{access: access, classes: classes, keyLock: NewKeyLock()}, nil
+}
+
+func setupNsxtBroker(nsxtConfig *config.NsxtConfig) (NsxtBroker, error) {
+	if nsxtConfig.SimulateInMemory {
+		return NewInMemoryNsxtBroker(), nil
+	} else {
+		retriesConfig := nsxt.ClientRetriesConfiguration{
+			MaxRetries:      nsxtConfig.MaxRetries,
+			RetryMinDelay:   nsxtConfig.RetryMinDelay,
+			RetryMaxDelay:   nsxtConfig.RetryMaxDelay,
+			RetryOnStatuses: nsxtConfig.RetryOnStatusCodes,
+		}
+		cfg := nsxt.Configuration{
+			BasePath:             "/api/v1",
+			Host:                 nsxtConfig.Host,
+			Scheme:               "https",
+			UserAgent:            "nsxt-lb-provider/" + Version,
+			UserName:             nsxtConfig.User,
+			Password:             nsxtConfig.Password,
+			RemoteAuth:           nsxtConfig.RemoteAuth,
+			ClientAuthCertFile:   nsxtConfig.ClientAuthCertFile,
+			ClientAuthKeyFile:    nsxtConfig.ClientAuthKeyFile,
+			CAFile:               nsxtConfig.CAFile,
+			Insecure:             nsxtConfig.InsecureFlag,
+			RetriesConfiguration: retriesConfig,
+		}
+		client, err := nsxt.NewAPIClient(&cfg)
+		if err != nil {
+			return nil, errors.Wrap(err, "creating NSX-T client failed")
+		}
+		return NewNsxtBroker(client), nil
+	}
 }
 
 func (p *lbProvider) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {

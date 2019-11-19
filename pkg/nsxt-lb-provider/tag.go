@@ -53,3 +53,11 @@ func getTag(tags []common.Tag, scope string) string {
 	}
 	return ""
 }
+
+func mapToTags(tagMap map[string]string) []common.Tag {
+	tags := []common.Tag{}
+	for scope, tag := range tagMap {
+		tags = append(tags, common.Tag{Scope: scope, Tag: tag})
+	}
+	return tags
+}

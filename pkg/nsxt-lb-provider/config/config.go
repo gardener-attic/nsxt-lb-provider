@@ -76,6 +76,7 @@ type NsxtConfig struct {
 	ClientAuthCertFile string `gcfg:"client_auth_cert_file"`
 	ClientAuthKeyFile  string `gcfg:"client_auth_key_file"`
 	CAFile             string `gcfg:"ca_file"`
+	SimulateInMemory   bool   `gcfg:"simulateInMemory"`
 }
 
 func (cfg *Config) validateConfig() error {
@@ -113,6 +114,10 @@ func (cfg *Config) validateConfig() error {
 }
 
 func (cfg *NsxtConfig) validateConfig() error {
+	if cfg.SimulateInMemory {
+		return nil
+	}
+
 	if cfg.User == "" {
 		msg := "user is empty"
 		klog.Errorf(msg)
