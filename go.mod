@@ -19,7 +19,7 @@ require (
 
 replace (
 	github.com/vmware/go-vmware-nsxt => ../go-vmware-nsxt
-	gopkg.in/gcfg.v1 => github.com/mandelsoft/gcfg v1.2.4-0.20191118112722-f0b8a49fc708
+	gopkg.in/gcfg.v1 => github.com/mandelsoft/gcfg v1.2.4-0.20191118133708-71f203a139d3
 	k8s.io/api => k8s.io/api v0.0.0-20190918195907-bd6ac527cfd2 // kubernetes-1.15.4
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.0.0-20190918201827-3de75813f604 // kubernetes-1.15.4
 	k8s.io/apimachinery => k8s.io/apimachinery v0.0.0-20190817020851-f2f3a405f61d // kubernetes-1.15.4

@@ -202,7 +202,7 @@ google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
 google.golang.org/grpc/transport
-# gopkg.in/gcfg.v1 v1.2.3
+# gopkg.in/gcfg.v1 v1.2.3 => github.com/mandelsoft/gcfg v1.2.4-0.20191118133708-71f203a139d3
 gopkg.in/gcfg.v1
 gopkg.in/gcfg.v1/scanner
 gopkg.in/gcfg.v1/token
