@@ -64,7 +64,7 @@ func NewInMemoryNsxtBroker(ipPoolNames ...string) NsxtBroker {
 	ipPools := map[string]*memIpPool{}
 	for i, name := range ipPoolNames {
 		id := fmt.Sprintf("ip-pool-%d", i)
-		ipPools[id] = newMemIpPool(id, name, fmt.Sprintf("10.111.%d.", i), 10)
+		ipPools[id] = newMemIpPool(id, name, fmt.Sprintf("10.111.%d", i), 10)
 	}
 	return &inmemoryNsxtBroker{
 		ipPools:          ipPools,
@@ -183,7 +183,7 @@ func (b *inmemoryNsxtBroker) CreateLoadBalancerPool(pool loadbalancer.LbPool) (l
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	pool.Id = fmt.Sprintf("server-%d", b.nextId)
+	pool.Id = fmt.Sprintf("pool-%d", b.nextId)
 	b.nextId++
 	b.lbPools = append(b.lbPools, pool)
 	return pool, nil
@@ -249,7 +249,7 @@ func (b *inmemoryNsxtBroker) AllocateFromIpPool(ipPoolID string) (ipAddress stri
 	if ipPool.size == len(ipPool.allocations) {
 		return "", http.StatusInternalServerError, fmt.Errorf("IP pool %s is full", ipPoolID)
 	}
-	for i := 0; i < ipPool.size; i++ {
+	for i := 1; i <= ipPool.size; i++ {
 		ipAddress := fmt.Sprintf("%s.%d", ipPool.addressPrefix, i)
 		if _, ok := ipPool.allocations[ipAddress]; !ok {
 			ipPool.allocations[ipAddress] = struct{}{}

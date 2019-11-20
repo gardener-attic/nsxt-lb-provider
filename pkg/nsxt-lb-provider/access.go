@@ -37,16 +37,14 @@ const (
 type access struct {
 	broker       NsxtBroker
 	config       *config.Config
+	ownerTag     common.Tag
 	standardTags []common.Tag
 }
-
-var (
-	ownerTag = common.Tag{Scope: ScopeOwner, Tag: AppName}
-)
 
 var _ Access = &access{}
 
 func NewAccess(broker NsxtBroker, config *config.Config) (Access, error) {
+	ownerTag := common.Tag{Scope: ScopeOwner, Tag: AppName}
 	standardTags := []common.Tag{ownerTag}
 	for k, v := range config.AdditionalTags {
 		standardTags = append(standardTags, common.Tag{Scope: k, Tag: v})
@@ -54,6 +52,7 @@ func NewAccess(broker NsxtBroker, config *config.Config) (Access, error) {
 	return &access{
 		broker:       broker,
 		config:       config,
+		ownerTag:     ownerTag,
 		standardTags: standardTags,
 	}, nil
 }
@@ -77,6 +76,7 @@ func (a *access) CreateLoadBalancerService(clusterName string) (*loadbalancer.Lb
 		DisplayName: fmt.Sprintf("cluster:%s", clusterName),
 		Tags:        append(a.standardTags, clusterTag(clusterName)),
 		Size:        a.config.LoadBalancer.Size,
+		Enabled:     true,
 	}
 	result, err := a.broker.CreateLoadBalancerService(lbService)
 	if err != nil {
@@ -100,7 +100,7 @@ func (a *access) findLoadBalancerService(clusterName string, f selector) (*loadb
 		return nil, errors.Wrapf(err, "listing load balancer services failed")
 	}
 	for _, item := range list.Results {
-		if checkTags(item.Tags, ownerTag, clusterTag(clusterName)) && f(&item) {
+		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName)) && f(&item) {
 			return &item, nil
 		}
 	}
@@ -164,8 +164,9 @@ func (a *access) FindVirtualServers(clusterName string, objectName ObjectName) (
 	}
 	var result []*loadbalancer.LbVirtualServer
 	for _, item := range list.Results {
-		if checkTags(item.Tags, ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
-			result = append(result, &item)
+		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
+			server := item
+			result = append(result, &server)
 		}
 	}
 	return result, nil
@@ -178,7 +179,7 @@ func (a *access) ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtu
 	}
 	var result []*loadbalancer.LbVirtualServer
 	for _, item := range list.Results {
-		if checkTags(item.Tags, ownerTag, clusterTag(clusterName)) {
+		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName)) {
 			result = append(result, &item)
 		}
 	}
@@ -233,7 +234,7 @@ func (a *access) FindPool(clusterName string, objectName ObjectName) (*loadbalan
 		return nil, errors.Wrapf(err, "listing load balancer pools failed")
 	}
 	for _, item := range list.Results {
-		if checkTags(item.Tags, ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
+		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
 			return &item, nil
 		}
 	}
@@ -247,8 +248,9 @@ func (a *access) ListPools(clusterName string) ([]*loadbalancer.LbPool, error) {
 	}
 	var result []*loadbalancer.LbPool
 	for _, item := range list.Results {
-		if checkTags(item.Tags, ownerTag, clusterTag(clusterName)) {
-			result = append(result, &item)
+		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName)) {
+			pool := item
+			result = append(result, &pool)
 		}
 	}
 	return result, nil

@@ -36,9 +36,11 @@ import (
 	"k8s.io/klog"
 )
 
-const AppName string = "nsxt-lb-provider"
+const (
+	AppName = "nsxt-lb-provider"
+)
 
-var version string
+var version = "version-unknown"
 
 func main() {
 	lbprovider.Version = version
@@ -60,6 +62,8 @@ func main() {
 	klog.V(1).Infof("%s version: %s", AppName, version)
 
 	// Set cloud-provider flag to vsphere
+	var versionFlag *pflag.Value
+	var clusterNameFlag *pflag.Value
 	command.Flags().VisitAll(func(flag *pflag.Flag) {
 		switch flag.Name {
 		case "cloud-provider":
@@ -67,18 +71,10 @@ func main() {
 			flag.DefValue = lbprovider.ProviderName
 		case "leader-elect-resource-name":
 			flag.DefValue = lbprovider.LeaderResourceName
-		}
-	})
-
-	//
-	var versionFlag *pflag.Value
-	var clusterNameFlag *pflag.Value
-	pflag.CommandLine.VisitAll(func(flag *pflag.Flag) {
-		switch flag.Name {
-		case "version":
-			versionFlag = &flag.Value
 		case "cluster-name":
 			clusterNameFlag = &flag.Value
+		case "version":
+			versionFlag = &flag.Value
 		}
 	})
 

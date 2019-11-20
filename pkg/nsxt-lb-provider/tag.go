@@ -28,19 +28,17 @@ func serviceTag(objectName ObjectName) common.Tag {
 }
 
 func checkTags(tags []common.Tag, required ...common.Tag) bool {
-	for _, tag := range tags {
-		found := false
-		for _, req := range required {
+outer:
+	for _, req := range required {
+		for _, tag := range tags {
 			if tag.Scope == req.Scope {
-				found = true
 				if tag.Tag != req.Tag {
 					return false
 				}
+				continue outer
 			}
 		}
-		if !found {
-			return false
-		}
+		return false
 	}
 	return true
 }

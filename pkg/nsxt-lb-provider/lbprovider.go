@@ -63,7 +63,7 @@ func newLBProvider(config *config.Config) (*lbProvider, error) {
 
 func setupNsxtBroker(nsxtConfig *config.NsxtConfig) (NsxtBroker, error) {
 	if nsxtConfig.SimulateInMemory {
-		return NewInMemoryNsxtBroker(), nil
+		return NewInMemoryNsxtBroker(nsxtConfig.SimulatedIPPools...), nil
 	} else {
 		retriesConfig := nsxt.ClientRetriesConfiguration{
 			MaxRetries:      nsxtConfig.MaxRetries,
