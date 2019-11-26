@@ -99,10 +99,7 @@ func (b *inmemoryNsxtBroker) ListLoadBalancerServices() (loadbalancer.LbServiceL
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	listResult := loadbalancer.LbServiceListResult{}
-	for _, svc := range b.lbServices {
-		listResult.Results = append(listResult.Results, svc)
-	}
+	listResult := loadbalancer.LbServiceListResult{Results: b.lbServices}
 	return listResult, nil
 }
 
@@ -146,10 +143,7 @@ func (b *inmemoryNsxtBroker) ListLoadBalancerVirtualServers() (loadbalancer.LbVi
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	listResult := loadbalancer.LbVirtualServerListResult{}
-	for _, server := range b.lbVirtualServers {
-		listResult.Results = append(listResult.Results, server)
-	}
+	listResult := loadbalancer.LbVirtualServerListResult{Results: b.lbVirtualServers}
 	return listResult, nil
 }
 
@@ -205,10 +199,7 @@ func (b *inmemoryNsxtBroker) ListLoadBalancerPools() (loadbalancer.LbPoolListRes
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
-	listResult := loadbalancer.LbPoolListResult{}
-	for _, pool := range b.lbPools {
-		listResult.Results = append(listResult.Results, pool)
-	}
+	listResult := loadbalancer.LbPoolListResult{Results: b.lbPools}
 	return listResult, nil
 }
 
