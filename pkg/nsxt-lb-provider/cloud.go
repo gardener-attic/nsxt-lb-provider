@@ -25,8 +25,7 @@ import (
 )
 
 const (
-	ProviderName       = "vsphere"
-	LeaderResourceName = "nsxt-lb-provider"
+	ProviderName = "vsphere"
 )
 
 var (

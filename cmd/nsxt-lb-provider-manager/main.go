@@ -69,8 +69,6 @@ func main() {
 		case "cloud-provider":
 			_ = flag.Value.Set(lbprovider.ProviderName)
 			flag.DefValue = lbprovider.ProviderName
-		case "leader-elect-resource-name":
-			flag.DefValue = lbprovider.LeaderResourceName
 		case "cluster-name":
 			clusterNameFlag = &flag.Value
 		case "version":
