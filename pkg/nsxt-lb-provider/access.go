@@ -77,6 +77,9 @@ func (a *access) CreateLoadBalancerService(clusterName string) (*loadbalancer.Lb
 		Tags:        append(a.standardTags, clusterTag(clusterName)),
 		Size:        a.config.LoadBalancer.Size,
 		Enabled:     true,
+		Attachment: &common.ResourceReference{
+			TargetId: a.config.NSXT.LogicalRouterId,
+		},
 	}
 	result, err := a.broker.CreateLoadBalancerService(lbService)
 	if err != nil {

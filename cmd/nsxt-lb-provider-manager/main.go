@@ -48,6 +48,7 @@ func main() {
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
+	app.ControllersDisabledByDefault.Insert("cloud-node", "cloud-node-lifecycle", "route")
 	command := app.NewCloudControllerManagerCommand()
 
 	// TODO: once we switch everything over to Cobra commands, we can go back to calling

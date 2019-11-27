@@ -78,6 +78,7 @@ type NsxtConfig struct {
 	CAFile             string   `gcfg:"ca_file"`
 	SimulateInMemory   bool     `gcfg:"simulateInMemory"`
 	SimulatedIPPools   []string `gcfg:"simulatedIPPools"`
+	LogicalRouterId    string   `gcfg:"logicalRouterId"`
 }
 
 func (cfg *Config) validateConfig() error {
@@ -131,6 +132,11 @@ func (cfg *NsxtConfig) validateConfig() error {
 	}
 	if cfg.Host == "" {
 		msg := "host is empty"
+		klog.Errorf(msg)
+		return fmt.Errorf(msg)
+	}
+	if cfg.LogicalRouterId == "" {
+		msg := "logicalRouterId is empty"
 		klog.Errorf(msg)
 		return fmt.Errorf(msg)
 	}
