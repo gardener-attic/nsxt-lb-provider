@@ -21,11 +21,13 @@ import (
 	"github.com/gardener/nsxt-lb-provider/pkg/nsxt-lb-provider/config"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/sets"
 )
 
 type state struct {
 	access      Access
 	clusterName string
+	objectName  ObjectName
 	service     *corev1.Service
 	servers     []*loadbalancer.LbVirtualServer
 	ipAddress   string
@@ -37,7 +39,8 @@ type state struct {
 func newState(clusterName string, service *corev1.Service, access Access, class *loadBalancerClass) (*state, error) {
 	var err error
 	state := &state{access: access, clusterName: clusterName, service: service}
-	state.servers, err = access.FindVirtualServers(clusterName, objectNameFromService(service))
+	state.objectName = objectNameFromService(service)
+	state.servers, err = access.FindVirtualServers(clusterName, state.objectName)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +65,7 @@ func newState(clusterName string, service *corev1.Service, access Access, class 
 	state.class = class
 
 	if state.poolID == "" {
-		state.pool, err = access.FindPool(clusterName, objectNameFromService(service))
+		state.pool, err = access.FindPool(clusterName, state.objectName)
 		if err != nil {
 			return nil, err
 		}
@@ -86,7 +89,7 @@ func (s *state) getPool() (*loadbalancer.LbPool, error) {
 func (s *state) initialize() error {
 	var err error
 	if s.poolID == "" {
-		s.pool, err = s.access.CreatePool(s.clusterName, objectNameFromService(s.service))
+		s.pool, err = s.access.CreatePool(s.clusterName, s.objectName)
 		if err != nil {
 			return err
 		}
@@ -121,7 +124,51 @@ func (s *state) finish() (*corev1.LoadBalancerStatus, error) {
 				return nil, err
 			}
 		}
-		return nil, nil
+		err := s.cleanupMonitors(sets.String{})
+		return nil, err
 	}
 	return newLoadBalancerStatus(s.ipAddress), nil
+}
+
+func (s *state) ensureMonitorIds(newMonitorIds sets.String) error {
+	pool, err := s.getPool()
+	if err != nil {
+		return err
+	}
+	mod := false
+	for _, id := range pool.ActiveMonitorIds {
+		if !newMonitorIds.Has(id) {
+			mod = true
+			break
+		}
+	}
+	if !mod && len(newMonitorIds) == len(pool.ActiveMonitorIds) {
+		return nil
+	}
+	list := []string{}
+	for newId := range newMonitorIds {
+		list = append(list, newId)
+	}
+	pool.ActiveMonitorIds = list
+	err = s.access.UpdatePool(pool)
+	if err != nil {
+		return err
+	}
+	return s.cleanupMonitors(newMonitorIds)
+}
+
+func (s *state) cleanupMonitors(monitorIdsToKeep sets.String) error {
+	oldMonitorIds, err := s.access.ListTcpMonitorIds(s.clusterName, s.objectName)
+	if err != nil {
+		return err
+	}
+	for _, id := range oldMonitorIds {
+		if !monitorIdsToKeep.Has(id) {
+			err = s.access.DeleteTcpMonitor(id)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

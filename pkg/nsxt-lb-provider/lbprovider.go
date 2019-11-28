@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"strings"
 	"sync"
 
@@ -147,6 +148,7 @@ func (p *lbProvider) EnsureLoadBalancer(ctx context.Context, clusterName string,
 	if err != nil {
 		return nil, err
 	}
+	newMonitorIds := sets.String{}
 	for _, servicePort := range service.Spec.Ports {
 		mapping := NewMapping(servicePort)
 		found := false
@@ -166,6 +168,23 @@ func (p *lbProvider) EnsureLoadBalancer(ctx context.Context, clusterName string,
 				return nil, err
 			}
 		}
+		if servicePort.Protocol == corev1.ProtocolTCP {
+			monitor, err := p.access.FindTcpMonitor(clusterName, state.objectName, int(servicePort.NodePort))
+			if err != nil {
+				return nil, err
+			}
+			if monitor == nil {
+				monitor, err = p.access.CreateTcpMonitor(clusterName, state.objectName, int(servicePort.NodePort))
+				if err != nil {
+					return nil, err
+				}
+			}
+			newMonitorIds.Insert(monitor.Id)
+		}
+	}
+	err = state.ensureMonitorIds(newMonitorIds)
+	if err != nil {
+		return nil, err
 	}
 	for _, server := range state.servers {
 		found := false
@@ -262,7 +281,7 @@ func (p *lbProvider) createVirtualServer(mapping Mapping, nodes []*corev1.Node, 
 	if err != nil {
 		return err
 	}
-	vserver, err := p.access.CreateVirtualServer(state.clusterName, objectNameFromService(state.service), state.class, state.ipAddress, mapping, state.poolID)
+	vserver, err := p.access.CreateVirtualServer(state.clusterName, state.objectName, state.class, state.ipAddress, mapping, state.poolID)
 	if err != nil {
 		_, _ = state.finish()
 		return err

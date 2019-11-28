@@ -12111,3 +12111,100 @@ func (a *ServicesApiService) ListLoadBalancerPools(ctx context.Context, localVar
 
 	return successPayload, localVarHttpResponse, err
 }
+
+/* new
+  ServicesApiService Get a paginated list of Lb monitors
+ @param ctx context.Context Authentication Context
+@param optional (nil or map[string]interface{}) with one or more of:
+    @param "cursor" (string) Opaque cursor to be used for getting next page of records (supplied by current result page)
+    @param "includedFields" (string) Comma separated list of fields that should be included to result of query
+    @param "pageSize" (int64) Maximum number of results to return in this page (server may return fewer)
+    @param "sortAscending" (bool)
+    @param "sortBy" (string) Field by which records are sorted
+@return l.LbMonitorListResult*/
+func (a *ServicesApiService) ListLoadBalancerMonitors(ctx context.Context, localVarOptionals map[string]interface{}) (loadbalancer.LbMonitorListResult, *http.Response, error) {
+	var (
+		localVarHttpMethod = strings.ToUpper("Get")
+		localVarPostBody   interface{}
+		localVarFileName   string
+		localVarFileBytes  []byte
+		successPayload     loadbalancer.LbMonitorListResult
+	)
+
+	// create path and map variables
+	localVarPath := a.client.cfg.BasePath + "/loadbalancer/monitors"
+
+	localVarHeaderParams := make(map[string]string)
+	localVarQueryParams := url.Values{}
+	localVarFormParams := url.Values{}
+
+	if err := typeCheckParameter(localVarOptionals["cursor"], "string", "cursor"); err != nil {
+		return successPayload, nil, err
+	}
+	if err := typeCheckParameter(localVarOptionals["includedFields"], "string", "includedFields"); err != nil {
+		return successPayload, nil, err
+	}
+	if err := typeCheckParameter(localVarOptionals["pageSize"], "int64", "pageSize"); err != nil {
+		return successPayload, nil, err
+	}
+	if err := typeCheckParameter(localVarOptionals["sortAscending"], "bool", "sortAscending"); err != nil {
+		return successPayload, nil, err
+	}
+	if err := typeCheckParameter(localVarOptionals["sortBy"], "string", "sortBy"); err != nil {
+		return successPayload, nil, err
+	}
+
+	if localVarTempParam, localVarOk := localVarOptionals["cursor"].(string); localVarOk {
+		localVarQueryParams.Add("cursor", parameterToString(localVarTempParam, ""))
+	}
+	if localVarTempParam, localVarOk := localVarOptionals["includedFields"].(string); localVarOk {
+		localVarQueryParams.Add("included_fields", parameterToString(localVarTempParam, ""))
+	}
+	if localVarTempParam, localVarOk := localVarOptionals["pageSize"].(int64); localVarOk {
+		localVarQueryParams.Add("page_size", parameterToString(localVarTempParam, ""))
+	}
+	if localVarTempParam, localVarOk := localVarOptionals["sortAscending"].(bool); localVarOk {
+		localVarQueryParams.Add("sort_ascending", parameterToString(localVarTempParam, ""))
+	}
+	if localVarTempParam, localVarOk := localVarOptionals["sortBy"].(string); localVarOk {
+		localVarQueryParams.Add("sort_by", parameterToString(localVarTempParam, ""))
+	}
+	// to determine the Content-Type header
+	localVarHttpContentTypes := []string{"application/json"}
+
+	// set Content-Type header
+	localVarHttpContentType := selectHeaderContentType(localVarHttpContentTypes)
+	if localVarHttpContentType != "" {
+		localVarHeaderParams["Content-Type"] = localVarHttpContentType
+	}
+
+	// to determine the Accept header
+	localVarHttpHeaderAccepts := []string{
+		"application/json",
+	}
+
+	// set Accept header
+	localVarHttpHeaderAccept := selectHeaderAccept(localVarHttpHeaderAccepts)
+	if localVarHttpHeaderAccept != "" {
+		localVarHeaderParams["Accept"] = localVarHttpHeaderAccept
+	}
+	r, err := a.client.prepareRequest(ctx, localVarPath, localVarHttpMethod, localVarPostBody, localVarHeaderParams, localVarQueryParams, localVarFormParams, localVarFileName, localVarFileBytes)
+	if err != nil {
+		return successPayload, nil, err
+	}
+
+	localVarHttpResponse, err := a.client.callAPI(r)
+	if err != nil || localVarHttpResponse == nil {
+		return successPayload, localVarHttpResponse, err
+	}
+	defer localVarHttpResponse.Body.Close()
+	if localVarHttpResponse.StatusCode >= 300 {
+		return successPayload, localVarHttpResponse, reportError(localVarHttpResponse.Status)
+	}
+
+	if err = json.NewDecoder(localVarHttpResponse.Body).Decode(&successPayload); err != nil {
+		return successPayload, localVarHttpResponse, err
+	}
+
+	return successPayload, localVarHttpResponse, err
+}

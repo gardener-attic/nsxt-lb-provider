@@ -37,7 +37,8 @@ import (
 )
 
 const (
-	AppName = "nsxt-lb-provider"
+	AppName          = "nsxt-lb-provider"
+	LockResourceName = "lb-controller-manager"
 )
 
 var version = "version-unknown"
@@ -70,6 +71,9 @@ func main() {
 		case "cloud-provider":
 			_ = flag.Value.Set(lbprovider.ProviderName)
 			flag.DefValue = lbprovider.ProviderName
+		case "leader-elect-resource-name":
+			_ = flag.Value.Set(LockResourceName)
+			flag.DefValue = LockResourceName
 		case "cluster-name":
 			clusterNameFlag = &flag.Value
 		case "version":

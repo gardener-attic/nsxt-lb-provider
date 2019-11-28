@@ -31,6 +31,7 @@ type inmemoryNsxtBroker struct {
 	lbServices       []loadbalancer.LbService
 	lbVirtualServers []loadbalancer.LbVirtualServer
 	lbPools          []loadbalancer.LbPool
+	lbMonitors       []loadbalancer.LbTcpMonitor
 
 	nextId int
 }
@@ -279,4 +280,56 @@ func (b *inmemoryNsxtBroker) ReleaseFromIpPool(ipPoolID, ipAddress string) (stat
 	}
 	delete(ipPool.allocations, ipAddress)
 	return http.StatusOK, nil
+}
+
+func (b *inmemoryNsxtBroker) CreateLoadBalancerTcpMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	monitor.Id = fmt.Sprintf("tcp-monitor-%d", b.nextId)
+	b.nextId++
+	b.lbMonitors = append(b.lbMonitors, monitor)
+
+	return monitor, nil
+}
+
+func (b *inmemoryNsxtBroker) ListLoadBalancerMonitors() (loadbalancer.LbMonitorListResult, error) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	monitors := []loadbalancer.LbMonitor{}
+	for _, monitor := range b.lbMonitors {
+		plainMonitor := loadbalancer.LbMonitor{
+			Description:  monitor.Description,
+			DisplayName:  monitor.DisplayName,
+			Id:           monitor.Id,
+			ResourceType: monitor.ResourceType,
+			Tags:         monitor.Tags,
+		}
+		monitors = append(monitors, plainMonitor)
+	}
+	listResult := loadbalancer.LbMonitorListResult{Results: monitors}
+	return listResult, nil
+}
+
+func (b *inmemoryNsxtBroker) ReadLoadBalancerTcpMonitor(id string) (loadbalancer.LbTcpMonitor, error) {
+	for _, monitor := range b.lbMonitors {
+		if monitor.Id == id {
+			return monitor, nil
+		}
+	}
+	return loadbalancer.LbTcpMonitor{}, fmt.Errorf("LbTcpMonitor %s not found", id)
+}
+
+func (b *inmemoryNsxtBroker) DeleteLoadBalancerMonitor(id string) (int, error) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	for i, monitor := range b.lbMonitors {
+		if monitor.Id == id {
+			b.lbMonitors = append(b.lbMonitors[:i], b.lbMonitors[i+1:]...)
+			return http.StatusOK, nil
+		}
+	}
+	return http.StatusNotFound, fmt.Errorf("LbPool %s not found", id)
 }

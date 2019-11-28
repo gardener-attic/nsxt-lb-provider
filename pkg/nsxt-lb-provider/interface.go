@@ -47,6 +47,11 @@ type Access interface {
 	AllocateExternalIPAddress(ipPoolID string) (string, error)
 	IsAllocatedExternalIPAddress(ipPoolID string, address string) (bool, error)
 	ReleaseExternalIPAddress(ipPoolID string, address string) error
+
+	CreateTcpMonitor(clusterName string, objectName ObjectName, port int) (*loadbalancer.LbTcpMonitor, error)
+	FindTcpMonitor(clusterName string, objectName ObjectName, port int) (*loadbalancer.LbTcpMonitor, error)
+	ListTcpMonitorIds(clusterName string, objectName ObjectName) ([]string, error)
+	DeleteTcpMonitor(id string) error
 }
 
 type TagSource interface {

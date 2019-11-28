@@ -41,6 +41,11 @@ type NsxtBroker interface {
 	AllocateFromIpPool(ipPoolID string) (ipAddress string, statusCode int, err error)
 	ListIpPoolAllocations(ipPoolID string) (ipAddresses []string, statusCode int, err error)
 	ReleaseFromIpPool(ipPoolID, ipAddress string) (statusCode int, err error)
+
+	CreateLoadBalancerTcpMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error)
+	ListLoadBalancerMonitors() (loadbalancer.LbMonitorListResult, error)
+	ReadLoadBalancerTcpMonitor(id string) (loadbalancer.LbTcpMonitor, error)
+	DeleteLoadBalancerMonitor(id string) (int, error)
 }
 
 type nsxtBroker struct {
@@ -126,6 +131,30 @@ func (b *nsxtBroker) UpdateLoadBalancerPool(pool loadbalancer.LbPool) (loadbalan
 
 func (b *nsxtBroker) DeleteLoadBalancerPool(id string) (int, error) {
 	resp, err := b.client.ServicesApi.DeleteLoadBalancerPool(b.client.Context, id)
+	statusCode := 0
+	if resp != nil {
+		statusCode = resp.StatusCode
+	}
+	return statusCode, err
+}
+
+func (b *nsxtBroker) CreateLoadBalancerTcpMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error) {
+	result, _, err := b.client.ServicesApi.CreateLoadBalancerTcpMonitor(b.client.Context, monitor)
+	return result, err
+}
+
+func (b *nsxtBroker) ListLoadBalancerMonitors() (loadbalancer.LbMonitorListResult, error) {
+	result, _, err := b.client.ServicesApi.ListLoadBalancerMonitors(b.client.Context, nil)
+	return result, err
+}
+
+func (b *nsxtBroker) ReadLoadBalancerTcpMonitor(id string) (loadbalancer.LbTcpMonitor, error) {
+	monitor, _, err := b.client.ServicesApi.ReadLoadBalancerTcpMonitor(b.client.Context, id)
+	return monitor, err
+}
+
+func (b *nsxtBroker) DeleteLoadBalancerMonitor(id string) (int, error) {
+	resp, err := b.client.ServicesApi.DeleteLoadBalancerMonitor(b.client.Context, id)
 	statusCode := 0
 	if resp != nil {
 		statusCode = resp.StatusCode

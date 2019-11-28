@@ -212,9 +212,10 @@ func (a *access) CreatePool(clusterName string, objectName ObjectName) (*loadbal
 	pool := loadbalancer.LbPool{
 		Description: fmt.Sprintf("pool for cluster %s, service %s created by %s",
 			clusterName, objectName, AppName),
-		DisplayName: fmt.Sprintf("cluster:%s:%s", clusterName, objectName),
-		Tags:        append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)),
-		Members:     []loadbalancer.PoolMember{},
+		DisplayName:     fmt.Sprintf("cluster:%s:%s", clusterName, objectName),
+		Tags:            append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)),
+		SnatTranslation: &loadbalancer.LbSnatTranslation{Type_: "LbSnatAutoMap"},
+		Members:         []loadbalancer.PoolMember{},
 	}
 	result, err := a.broker.CreateLoadBalancerPool(pool)
 	if err != nil {
@@ -267,13 +268,71 @@ func (a *access) UpdatePool(pool *loadbalancer.LbPool) error {
 	return nil
 }
 
+func (a *access) CreateTcpMonitor(clusterName string, objectName ObjectName, port int) (*loadbalancer.LbTcpMonitor, error) {
+	monitor, err := a.broker.CreateLoadBalancerTcpMonitor(loadbalancer.LbTcpMonitor{
+		Description: fmt.Sprintf("tcp monitor for cluster %s, service %s, port %d created by %s",
+			clusterName, objectName, port, AppName),
+		DisplayName: fmt.Sprintf("cluster:%s:%s:%d", clusterName, objectName, port),
+		Tags:        append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)),
+		MonitorPort: fmt.Sprintf("%d", port),
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "creating tcp monitor failed for %s:%s:%d", clusterName, objectName, port)
+	}
+	return &monitor, nil
+}
+
+func (a *access) FindTcpMonitor(clusterName string, objectName ObjectName, port int) (*loadbalancer.LbTcpMonitor, error) {
+	list, err := a.broker.ListLoadBalancerMonitors()
+	if err != nil {
+		return nil, errors.Wrapf(err, "listing load balancer monitors failed")
+	}
+	for _, item := range list.Results {
+		if item.ResourceType == "LbTcpMonitor" && checkTags(item.Tags, a.ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
+			monitor, err := a.broker.ReadLoadBalancerTcpMonitor(item.Id)
+			if err != nil {
+				return nil, errors.Wrapf(err, "reading tcp monitor %s failed", item.Id)
+			}
+			if monitor.MonitorPort == fmt.Sprintf("%d", port) {
+				return &monitor, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (a *access) ListTcpMonitorIds(clusterName string, objectName ObjectName) ([]string, error) {
+	list, err := a.broker.ListLoadBalancerMonitors()
+	if err != nil {
+		return nil, errors.Wrapf(err, "listing load balancer monitors failed")
+	}
+	result := []string{}
+	for _, item := range list.Results {
+		if item.ResourceType == "LbTcpMonitor" && checkTags(item.Tags, a.ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
+			result = append(result, item.Id)
+		}
+	}
+	return result, nil
+}
+
+func (a *access) DeleteTcpMonitor(id string) error {
+	statusCode, err := a.broker.DeleteLoadBalancerMonitor(id)
+	if statusCode == http.StatusNotFound {
+		return nil
+	}
+	if err != nil {
+		return errors.Wrapf(err, "deleting monitor %s failed", id)
+	}
+	return nil
+}
+
 func (a *access) DeletePool(id string) error {
 	statusCode, err := a.broker.DeleteLoadBalancerPool(id)
 	if statusCode == http.StatusNotFound {
 		return nil
 	}
 	if err != nil {
-		return errors.Wrapf(err, "deleting oad balancer pool %s failed", id)
+		return errors.Wrapf(err, "deleting load balancer pool %s failed", id)
 	}
 	return nil
 }
