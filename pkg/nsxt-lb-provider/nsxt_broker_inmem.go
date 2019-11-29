@@ -75,7 +75,7 @@ func NewInMemoryNsxtBroker(ipPoolNames ...string) NsxtBroker {
 	}
 }
 
-func (b *inmemoryNsxtBroker) ListIpPools() (manager.IpPoolListResult, error) {
+func (b *inmemoryNsxtBroker) ListIPPools() (manager.IpPoolListResult, error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -230,7 +230,7 @@ func (b *inmemoryNsxtBroker) DeleteLoadBalancerPool(id string) (statusCode int, 
 	return http.StatusNotFound, fmt.Errorf("LbPool %s not found", id)
 }
 
-func (b *inmemoryNsxtBroker) AllocateFromIpPool(ipPoolID string) (ipAddress string, statusCode int, err error) {
+func (b *inmemoryNsxtBroker) AllocateFromIPPool(ipPoolID string) (ipAddress string, statusCode int, err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -251,7 +251,7 @@ func (b *inmemoryNsxtBroker) AllocateFromIpPool(ipPoolID string) (ipAddress stri
 	return "", http.StatusInternalServerError, fmt.Errorf("should never be reached")
 }
 
-func (b *inmemoryNsxtBroker) ListIpPoolAllocations(ipPoolID string) (ipAddresses []string, statusCode int, err error) {
+func (b *inmemoryNsxtBroker) ListIPPoolAllocations(ipPoolID string) (ipAddresses []string, statusCode int, err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -267,7 +267,7 @@ func (b *inmemoryNsxtBroker) ListIpPoolAllocations(ipPoolID string) (ipAddresses
 	return ipAddresses, http.StatusOK, nil
 }
 
-func (b *inmemoryNsxtBroker) ReleaseFromIpPool(ipPoolID, ipAddress string) (statusCode int, err error) {
+func (b *inmemoryNsxtBroker) ReleaseFromIPPool(ipPoolID, ipAddress string) (statusCode int, err error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -282,7 +282,7 @@ func (b *inmemoryNsxtBroker) ReleaseFromIpPool(ipPoolID, ipAddress string) (stat
 	return http.StatusOK, nil
 }
 
-func (b *inmemoryNsxtBroker) CreateLoadBalancerTcpMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error) {
+func (b *inmemoryNsxtBroker) CreateLoadBalancerTCPMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()
 
@@ -312,13 +312,26 @@ func (b *inmemoryNsxtBroker) ListLoadBalancerMonitors() (loadbalancer.LbMonitorL
 	return listResult, nil
 }
 
-func (b *inmemoryNsxtBroker) ReadLoadBalancerTcpMonitor(id string) (loadbalancer.LbTcpMonitor, error) {
+func (b *inmemoryNsxtBroker) ReadLoadBalancerTCPMonitor(id string) (loadbalancer.LbTcpMonitor, error) {
 	for _, monitor := range b.lbMonitors {
 		if monitor.Id == id {
 			return monitor, nil
 		}
 	}
 	return loadbalancer.LbTcpMonitor{}, fmt.Errorf("LbTcpMonitor %s not found", id)
+}
+
+func (b *inmemoryNsxtBroker) UpdateLoadBalancerTCPMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	for i, m := range b.lbMonitors {
+		if m.Id == monitor.Id {
+			b.lbMonitors[i] = monitor
+			return monitor, nil
+		}
+	}
+	return loadbalancer.LbTcpMonitor{}, fmt.Errorf("LbTcpMonitor %s not found", monitor.Id)
 }
 
 func (b *inmemoryNsxtBroker) DeleteLoadBalancerMonitor(id string) (int, error) {

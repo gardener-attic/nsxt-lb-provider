@@ -21,10 +21,12 @@ import (
 	nsxt "github.com/vmware/go-vmware-nsxt"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	"github.com/vmware/go-vmware-nsxt/manager"
+	"net/http"
+	"strings"
 )
 
 type NsxtBroker interface {
-	ListIpPools() (manager.IpPoolListResult, error)
+	ListIPPools() (manager.IpPoolListResult, error)
 	CreateLoadBalancerService(service loadbalancer.LbService) (loadbalancer.LbService, error)
 	ListLoadBalancerServices() (loadbalancer.LbServiceListResult, error)
 	UpdateLoadBalancerService(service loadbalancer.LbService) (loadbalancer.LbService, error)
@@ -38,13 +40,14 @@ type NsxtBroker interface {
 	ListLoadBalancerPools() (loadbalancer.LbPoolListResult, error)
 	UpdateLoadBalancerPool(pool loadbalancer.LbPool) (loadbalancer.LbPool, error)
 	DeleteLoadBalancerPool(id string) (statusCode int, err error)
-	AllocateFromIpPool(ipPoolID string) (ipAddress string, statusCode int, err error)
-	ListIpPoolAllocations(ipPoolID string) (ipAddresses []string, statusCode int, err error)
-	ReleaseFromIpPool(ipPoolID, ipAddress string) (statusCode int, err error)
+	AllocateFromIPPool(ipPoolID string) (ipAddress string, statusCode int, err error)
+	ListIPPoolAllocations(ipPoolID string) (ipAddresses []string, statusCode int, err error)
+	ReleaseFromIPPool(ipPoolID, ipAddress string) (statusCode int, err error)
 
-	CreateLoadBalancerTcpMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error)
+	CreateLoadBalancerTCPMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error)
 	ListLoadBalancerMonitors() (loadbalancer.LbMonitorListResult, error)
-	ReadLoadBalancerTcpMonitor(id string) (loadbalancer.LbTcpMonitor, error)
+	ReadLoadBalancerTCPMonitor(id string) (loadbalancer.LbTcpMonitor, error)
+	UpdateLoadBalancerTCPMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error)
 	DeleteLoadBalancerMonitor(id string) (int, error)
 }
 
@@ -56,7 +59,7 @@ func NewNsxtBroker(client *nsxt.APIClient) NsxtBroker {
 	return &nsxtBroker{client: client}
 }
 
-func (b *nsxtBroker) ListIpPools() (manager.IpPoolListResult, error) {
+func (b *nsxtBroker) ListIPPools() (manager.IpPoolListResult, error) {
 	result, _, err := b.client.PoolManagementApi.ListIpPools(b.client.Context, nil)
 	return result, err
 }
@@ -138,7 +141,7 @@ func (b *nsxtBroker) DeleteLoadBalancerPool(id string) (int, error) {
 	return statusCode, err
 }
 
-func (b *nsxtBroker) CreateLoadBalancerTcpMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error) {
+func (b *nsxtBroker) CreateLoadBalancerTCPMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error) {
 	result, _, err := b.client.ServicesApi.CreateLoadBalancerTcpMonitor(b.client.Context, monitor)
 	return result, err
 }
@@ -148,8 +151,13 @@ func (b *nsxtBroker) ListLoadBalancerMonitors() (loadbalancer.LbMonitorListResul
 	return result, err
 }
 
-func (b *nsxtBroker) ReadLoadBalancerTcpMonitor(id string) (loadbalancer.LbTcpMonitor, error) {
+func (b *nsxtBroker) ReadLoadBalancerTCPMonitor(id string) (loadbalancer.LbTcpMonitor, error) {
 	monitor, _, err := b.client.ServicesApi.ReadLoadBalancerTcpMonitor(b.client.Context, id)
+	return monitor, err
+}
+
+func (b *nsxtBroker) UpdateLoadBalancerTCPMonitor(monitor loadbalancer.LbTcpMonitor) (loadbalancer.LbTcpMonitor, error) {
+	monitor, _, err := b.client.ServicesApi.UpdateLoadBalancerTcpMonitor(b.client.Context, monitor.Id, monitor)
 	return monitor, err
 }
 
@@ -162,7 +170,7 @@ func (b *nsxtBroker) DeleteLoadBalancerMonitor(id string) (int, error) {
 	return statusCode, err
 }
 
-func (b *nsxtBroker) AllocateFromIpPool(ipPoolID string) (string, int, error) {
+func (b *nsxtBroker) AllocateFromIPPool(ipPoolID string) (string, int, error) {
 	allocationIPAddress, resp, err := b.client.PoolManagementApi.AllocateOrReleaseFromIpPool(b.client.Context,
 		ipPoolID, manager.AllocationIpAddress{}, "ALLOCATE")
 	statusCode := 0
@@ -172,14 +180,14 @@ func (b *nsxtBroker) AllocateFromIpPool(ipPoolID string) (string, int, error) {
 	return allocationIPAddress.AllocationId, statusCode, err
 }
 
-func (b *nsxtBroker) ListIpPoolAllocations(ipPoolID string) ([]string, int, error) {
+func (b *nsxtBroker) ListIPPoolAllocations(ipPoolID string) ([]string, int, error) {
 	resultList, resp, err := b.client.PoolManagementApi.ListIpPoolAllocations(b.client.Context, ipPoolID)
 	statusCode := 0
 	if resp != nil {
 		statusCode = resp.StatusCode
 	}
 	addresses := []string{}
-	if err != nil {
+	if err == nil {
 		for _, item := range resultList.Results {
 			addresses = append(addresses, item.AllocationId)
 		}
@@ -187,13 +195,17 @@ func (b *nsxtBroker) ListIpPoolAllocations(ipPoolID string) ([]string, int, erro
 	return addresses, statusCode, err
 }
 
-func (b *nsxtBroker) ReleaseFromIpPool(ipPoolID, ipAddress string) (int, error) {
+func (b *nsxtBroker) ReleaseFromIPPool(ipPoolID, ipAddress string) (int, error) {
 	allocationIpAddress := manager.AllocationIpAddress{AllocationId: ipAddress}
 	_, resp, err := b.client.PoolManagementApi.AllocateOrReleaseFromIpPool(b.client.Context, ipPoolID,
 		allocationIpAddress, "RELEASE")
 	statusCode := 0
 	if resp != nil {
 		statusCode = resp.StatusCode
+	}
+	if statusCode == http.StatusBadRequest && err != nil && strings.Contains(err.Error(), "is not allocated") {
+		// ignore if address is already released
+		return http.StatusOK, nil
 	}
 	return statusCode, err
 }

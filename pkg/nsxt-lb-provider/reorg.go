@@ -19,31 +19,12 @@ package nsxt_lb_provider
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 )
-
-type ObjectName struct {
-	Namespace string
-	Name      string
-}
-
-func objectNameFromService(service *corev1.Service) ObjectName {
-	return ObjectName{Namespace: service.Namespace, Name: service.Name}
-}
-
-func (o ObjectName) String() string {
-	return o.Namespace + "/" + o.Name
-}
-
-func parseObjectName(name string) ObjectName {
-	parts := strings.Split(name, "/")
-	return ObjectName{Namespace: parts[0], Name: parts[1]}
-}
 
 const maxPeriod = 30 * time.Minute
 
@@ -82,10 +63,10 @@ func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
 		return err
 	}
 
-	services := map[ObjectName]struct{}{}
+	services := map[ObjectName]corev1.Service{}
 	for _, item := range list.Items {
 		if item.Spec.Type == corev1.ServiceTypeLoadBalancer {
-			services[objectNameFromService(&item)] = struct{}{}
+			services[objectNameFromService(&item)] = item
 		}
 	}
 
@@ -112,8 +93,19 @@ func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
 		}
 	}
 
+	monitors, err := p.access.ListTCPMonitorLight(ClusterName)
+	if err != nil {
+		return err
+	}
+	for _, pool := range monitors {
+		tag := getTag(pool.Tags, ScopeService)
+		if tag != "" {
+			lbs[parseObjectName(tag)] = struct{}{}
+		}
+	}
+
 	for lb := range lbs {
-		if _, ok := services[lb]; !ok {
+		if svc, ok := services[lb]; !ok || svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
 			service := &corev1.Service{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: lb.Namespace,

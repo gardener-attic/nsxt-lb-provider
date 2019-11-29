@@ -17,7 +17,10 @@
 
 package nsxt_lb_provider
 
-import "github.com/vmware/go-vmware-nsxt/common"
+import (
+	"fmt"
+	"github.com/vmware/go-vmware-nsxt/common"
+)
 
 func clusterTag(clusterName string) common.Tag {
 	return common.Tag{Scope: ScopeCluster, Tag: clusterName}
@@ -25,6 +28,10 @@ func clusterTag(clusterName string) common.Tag {
 
 func serviceTag(objectName ObjectName) common.Tag {
 	return common.Tag{Scope: ScopeService, Tag: objectName.String()}
+}
+
+func portTag(mapping Mapping) common.Tag {
+	return common.Tag{Scope: ScopePort, Tag: fmt.Sprintf("%s/%d", mapping.Protocol, mapping.SourcePort)}
 }
 
 func checkTags(tags []common.Tag, required ...common.Tag) bool {

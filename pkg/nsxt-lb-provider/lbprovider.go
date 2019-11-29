@@ -20,13 +20,10 @@ package nsxt_lb_provider
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/vmware/go-vmware-nsxt/loadbalancer"
-	"k8s.io/apimachinery/pkg/util/sets"
 	"strings"
-	"sync"
 
 	"github.com/gardener/nsxt-lb-provider/pkg/nsxt-lb-provider/config"
+	"github.com/pkg/errors"
 	nsxt "github.com/vmware/go-vmware-nsxt"
 	corev1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
@@ -37,9 +34,8 @@ const (
 )
 
 type lbProvider struct {
-	access  Access
+	*lbService
 	classes map[string]*loadBalancerClass
-	lbLock  sync.Mutex
 	keyLock *KeyLock
 }
 
@@ -61,7 +57,7 @@ func newLBProvider(config *config.Config) (*lbProvider, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "creating load balancer classes failed")
 	}
-	return &lbProvider{access: access, classes: classes, keyLock: NewKeyLock()}, nil
+	return &lbProvider{lbService: newLbService(access), classes: classes, keyLock: NewKeyLock()}, nil
 }
 
 func setupNsxtBroker(nsxtConfig *config.NsxtConfig) (NsxtBroker, error) {
@@ -144,65 +140,14 @@ func (p *lbProvider) EnsureLoadBalancer(ctx context.Context, clusterName string,
 	if err != nil {
 		return nil, err
 	}
-	state, err := newState(clusterName, service, p.access, class)
+
+	state := NewState(p.lbService, clusterName, service, nodes)
+	err = state.Process(class)
+	status, err2 := state.Finish()
 	if err != nil {
-		return nil, err
+		return status, err
 	}
-	newMonitorIds := sets.String{}
-	for _, servicePort := range service.Spec.Ports {
-		mapping := NewMapping(servicePort)
-		found := false
-		for _, server := range state.servers {
-			if mapping.MatchVirtualServer(server) {
-				err = p.updateVirtualServer(server, mapping, nodes, state)
-				if err != nil {
-					return nil, err
-				}
-				found = true
-				break
-			}
-		}
-		if !found {
-			err = p.createVirtualServer(mapping, nodes, state)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if servicePort.Protocol == corev1.ProtocolTCP {
-			monitor, err := p.access.FindTcpMonitor(clusterName, state.objectName, int(servicePort.NodePort))
-			if err != nil {
-				return nil, err
-			}
-			if monitor == nil {
-				monitor, err = p.access.CreateTcpMonitor(clusterName, state.objectName, int(servicePort.NodePort))
-				if err != nil {
-					return nil, err
-				}
-			}
-			newMonitorIds.Insert(monitor.Id)
-		}
-	}
-	err = state.ensureMonitorIds(newMonitorIds)
-	if err != nil {
-		return nil, err
-	}
-	for _, server := range state.servers {
-		found := false
-		for _, servicePort := range service.Spec.Ports {
-			mapping := NewMapping(servicePort)
-			if mapping.MatchVirtualServer(server) {
-				found = true
-				break
-			}
-		}
-		if !found {
-			err = p.deleteVirtualServer(server, state)
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-	return state.finish()
+	return status, err2
 }
 
 func (p *lbProvider) classFromService(service *corev1.Service) (*loadBalancerClass, error) {
@@ -223,154 +168,6 @@ func (p *lbProvider) classFromService(service *corev1.Service) (*loadBalancerCla
 	return class, nil
 }
 
-func (p *lbProvider) addVirtualServerToLoadBalancerService(state *state, serverId string) error {
-	p.lbLock.Lock()
-	defer p.lbLock.Unlock()
-
-	lbService, err := p.access.FindFreeLoadBalancerService(state.clusterName)
-	if err != nil {
-		return err
-	}
-	if lbService == nil {
-		lbService, err = p.access.CreateLoadBalancerService(state.clusterName)
-		if err != nil {
-			return err
-		}
-	}
-	lbService.VirtualServerIds = append(lbService.VirtualServerIds, serverId)
-	err = p.access.UpdateLoadBalancerService(lbService)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (p *lbProvider) removeVirtualServerFromLoadBalancerService(state *state, serverId string) error {
-	p.lbLock.Lock()
-	defer p.lbLock.Unlock()
-
-	lbService, err := p.access.FindLoadBalancerServiceForVirtualServer(state.clusterName, serverId)
-	if err != nil {
-		return err
-	}
-	if lbService != nil {
-		for i, id := range lbService.VirtualServerIds {
-			if id == serverId {
-				lbService.VirtualServerIds = append(lbService.VirtualServerIds[:i], lbService.VirtualServerIds[i+1:]...)
-				break
-			}
-		}
-		if len(lbService.VirtualServerIds) == 0 {
-			err := p.access.DeleteLoadBalancerService(lbService.Id)
-			if err != nil {
-				return err
-			}
-		} else {
-			err := p.access.UpdateLoadBalancerService(lbService)
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (p *lbProvider) createVirtualServer(mapping Mapping, nodes []*corev1.Node, state *state) error {
-	err := state.initialize()
-	if err != nil {
-		return err
-	}
-	vserver, err := p.access.CreateVirtualServer(state.clusterName, state.objectName, state.class, state.ipAddress, mapping, state.poolID)
-	if err != nil {
-		_, _ = state.finish()
-		return err
-	}
-	err = p.addVirtualServerToLoadBalancerService(state, vserver.Id)
-	if err != nil {
-		_ = p.access.DeleteVirtualServer(vserver.Id)
-		return err
-	}
-	return nil
-}
-
-func collectNodeInternalAddresses(nodes []*corev1.Node) map[string]string {
-	set := map[string]string{}
-	for _, node := range nodes {
-		for _, addr := range node.Status.Addresses {
-			if addr.Type == corev1.NodeInternalIP {
-				set[addr.Address] = node.Name
-				break
-			}
-		}
-	}
-	return set
-}
-
-func (p *lbProvider) updateVirtualServer(server *loadbalancer.LbVirtualServer, mapping Mapping, nodes []*corev1.Node, state *state) error {
-	if !mapping.MatchNodePort(server) {
-		server.DefaultPoolMemberPort = formatPort(mapping.NodePort)
-		err := p.access.UpdateVirtualServer(server)
-		if err != nil {
-			return err
-		}
-	}
-	pool, err := state.getPool()
-	if err != nil {
-		return err
-	}
-	return p.updatePoolMembers(state.clusterName, pool, nodes)
-}
-
-func (p *lbProvider) updatePoolMembers(clusterName string, pool *loadbalancer.LbPool, nodes []*corev1.Node) error {
-	modified := false
-	nodeIpAddresses := collectNodeInternalAddresses(nodes)
-	newMembers := []loadbalancer.PoolMember{}
-	for _, member := range pool.Members {
-		if _, ok := nodeIpAddresses[member.IpAddress]; ok {
-			newMembers = append(newMembers, member)
-		} else {
-			modified = true
-		}
-	}
-	if len(nodeIpAddresses) > len(newMembers) {
-		for nodeIpAddress, nodeName := range nodeIpAddresses {
-			found := false
-			for _, member := range pool.Members {
-				if member.IpAddress == nodeIpAddress {
-					found = true
-					break
-				}
-			}
-			if !found {
-				member := loadbalancer.PoolMember{
-					AdminState:  "ENABLED",
-					DisplayName: fmt.Sprintf("%s:%s", clusterName, nodeName),
-					IpAddress:   nodeIpAddress,
-				}
-				newMembers = append(newMembers, member)
-				modified = true
-			}
-		}
-	}
-	if modified {
-		pool.Members = newMembers
-		err := p.access.UpdatePool(pool)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (p *lbProvider) deleteVirtualServer(server *loadbalancer.LbVirtualServer, state *state) error {
-	err := p.removeVirtualServerFromLoadBalancerService(state, server.Id)
-	if err != nil {
-		return err
-	}
-	return p.access.DeleteVirtualServer(server.Id)
-}
-
 // UpdateLoadBalancer updates hosts under the specified load balancer.
 // Implementations must treat the *corev1.Service and *corev1.Node
 // parameters as read-only and not modify them.
@@ -380,11 +177,9 @@ func (p *lbProvider) UpdateLoadBalancer(ctx context.Context, clusterName string,
 	p.keyLock.Lock(key)
 	defer p.keyLock.Unlock(key)
 
-	pool, err := p.access.FindPool(clusterName, objectNameFromService(service))
-	if err != nil {
-		return err
-	}
-	return p.updatePoolMembers(clusterName, pool, nodes)
+	state := NewState(p.lbService, clusterName, service, nodes)
+
+	return state.UpdatePoolMembers()
 }
 
 // EnsureLoadBalancerDeleted deletes the specified load balancer if it

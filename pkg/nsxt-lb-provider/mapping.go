@@ -18,6 +18,7 @@
 package nsxt_lb_provider
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
@@ -38,8 +39,20 @@ func NewMapping(servicePort corev1.ServicePort) Mapping {
 	}
 }
 
+func (m Mapping) String() string {
+	return fmt.Sprintf("%s/%d->%d", m.Protocol, m.SourcePort, m.NodePort)
+}
+
 func (m Mapping) MatchVirtualServer(server *loadbalancer.LbVirtualServer) bool {
 	return server.Port == formatPort(m.SourcePort) && server.IpProtocol == string(m.Protocol)
+}
+
+func (m Mapping) MatchPool(pool *loadbalancer.LbPool) bool {
+	return checkTags(pool.Tags, portTag(m))
+}
+
+func (m Mapping) MatchTCPMonitor(monitor *loadbalancer.LbTcpMonitor) bool {
+	return checkTags(monitor.Tags, portTag(m))
 }
 
 func (m Mapping) MatchNodePort(server *loadbalancer.LbVirtualServer) bool {

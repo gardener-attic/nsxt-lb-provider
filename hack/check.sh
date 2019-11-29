@@ -21,7 +21,7 @@ source "$DIRNAME/common.sh"
 header_text "Check"
 
 echo "Executing golangci-lint"
-golangci-lint run --modules-download-mode vendor "${SOURCE_TREES[@]}"
+golangci-lint run --skip-dirs-use-default --timeout 2m --modules-download-mode vendor "${SOURCE_TREES[@]}"
 
 echo "Checking for format issues with gofmt"
 unformatted_files="$(gofmt -l ./cmd ./pkg)"

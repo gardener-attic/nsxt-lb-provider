@@ -35,9 +35,10 @@ type Access interface {
 	UpdateVirtualServer(server *loadbalancer.LbVirtualServer) error
 	DeleteVirtualServer(id string) error
 
-	CreatePool(clusterName string, objectName ObjectName) (*loadbalancer.LbPool, error)
+	CreatePool(clusterName string, objectName ObjectName, mapping Mapping, members []loadbalancer.PoolMember, activeMonitorIds []string) (*loadbalancer.LbPool, error)
 	GetPool(id string) (*loadbalancer.LbPool, error)
-	FindPool(clusterName string, objectName ObjectName) (*loadbalancer.LbPool, error)
+	FindPool(clusterName string, objectName ObjectName, mapping Mapping) (*loadbalancer.LbPool, error)
+	FindPools(clusterName string, objectName ObjectName) ([]*loadbalancer.LbPool, error)
 	ListPools(clusterName string) ([]*loadbalancer.LbPool, error)
 	UpdatePool(*loadbalancer.LbPool) error
 	DeletePool(id string) error
@@ -48,10 +49,11 @@ type Access interface {
 	IsAllocatedExternalIPAddress(ipPoolID string, address string) (bool, error)
 	ReleaseExternalIPAddress(ipPoolID string, address string) error
 
-	CreateTcpMonitor(clusterName string, objectName ObjectName, port int) (*loadbalancer.LbTcpMonitor, error)
-	FindTcpMonitor(clusterName string, objectName ObjectName, port int) (*loadbalancer.LbTcpMonitor, error)
-	ListTcpMonitorIds(clusterName string, objectName ObjectName) ([]string, error)
-	DeleteTcpMonitor(id string) error
+	CreateTCPMonitor(clusterName string, objectName ObjectName, mapping Mapping) (*loadbalancer.LbTcpMonitor, error)
+	FindTCPMonitors(clusterName string, objectName ObjectName) ([]*loadbalancer.LbTcpMonitor, error)
+	ListTCPMonitorLight(clusterName string) ([]*loadbalancer.LbMonitor, error)
+	UpdateTCPMonitor(monitor *loadbalancer.LbTcpMonitor) error
+	DeleteTCPMonitor(id string) error
 }
 
 type TagSource interface {
