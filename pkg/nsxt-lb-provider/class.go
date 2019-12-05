@@ -24,63 +24,92 @@ import (
 	"github.com/vmware/go-vmware-nsxt/common"
 )
 
-type loadBalancerClass struct {
-	className         string
-	ipPoolName        string
-	ipPoolID          string
+type loadBalancerClasses struct {
 	size              string
 	maxVirtualServers int
-	tags              []common.Tag
+	classes           map[string]*loadBalancerClass
 }
 
-func setupClasses(access Access, cfg *config.Config) (map[string]*loadBalancerClass, error) {
-	lbClasses := map[string]*loadBalancerClass{}
+type loadBalancerClass struct {
+	className  string
+	ipPoolName string
+	ipPoolID   string
+	tags       []common.Tag
+}
 
-	if cfg.LoadBalancer != nil {
-		lbClass, err := newLbClass(access, config.DefaultLoadBalancerClass, cfg.LoadBalancer)
-		if err != nil {
-			return nil, errors.Wrapf(err, "invalid default LoadBalancerClass")
-		}
-		lbClasses[config.DefaultLoadBalancerClass] = lbClass
+func setupClasses(access Access, cfg *config.Config) (*loadBalancerClasses, error) {
+	max, ok := config.SizeToMaxVirtualServers[cfg.LoadBalancer.Size]
+	if !ok {
+		return nil, fmt.Errorf("invalid load balancer size %s", cfg.LoadBalancer.Size)
 	}
-	for name, classConfig := range cfg.LoadBalancerClass {
-		if _, ok := lbClasses[name]; ok {
+
+	lbClasses := &loadBalancerClasses{
+		size:              cfg.LoadBalancer.Size,
+		maxVirtualServers: max,
+		classes:           map[string]*loadBalancerClass{},
+	}
+
+	defaultConfig := &config.LoadBalancerClassConfig{
+		IPPoolName: cfg.LoadBalancer.IPPoolName,
+		IPPoolID:   cfg.LoadBalancer.IPPoolID,
+	}
+	if defCfg, ok := cfg.LoadBalancerClasses[config.DefaultLoadBalancerClass]; ok {
+		if defCfg.IPPoolID != "" || defCfg.IPPoolName != "" {
+			defaultConfig = defCfg
+		}
+	} else {
+		err := lbClasses.add(access, config.DefaultLoadBalancerClass, defaultConfig, defaultConfig)
+		if err != nil {
+			return nil, errors.Wrapf(err, "invalid LoadBalancerClass %s", config.DefaultLoadBalancerClass)
+		}
+	}
+
+	for name, classConfig := range cfg.LoadBalancerClasses {
+		if _, ok := lbClasses.classes[name]; ok {
 			return nil, fmt.Errorf("duplicate LoadBalancerClass %s", name)
 		}
-		lbClass, err := newLbClass(access, name, classConfig)
+		err := lbClasses.add(access, name, classConfig, defaultConfig)
 		if err != nil {
 			return nil, errors.Wrapf(err, "invalid LoadBalancerClass %s", name)
 		}
-		lbClasses[name] = lbClass
 	}
+
 	return lbClasses, nil
 }
 
-func newLbClass(access Access, name string, classConfig *config.LoadBalancerConfig) (*loadBalancerClass, error) {
+func (c *loadBalancerClasses) GetClass(name string) *loadBalancerClass {
+	return c.classes[name]
+}
+
+func (c *loadBalancerClasses) add(access Access, name string, classConfig *config.LoadBalancerClassConfig, defaultConfig *config.LoadBalancerClassConfig) error {
 	var err error
+	ipPoolName := classConfig.IPPoolName
 	ipPoolID := classConfig.IPPoolID
+	if ipPoolID == "" && ipPoolName == "" {
+		ipPoolID = defaultConfig.IPPoolID
+		ipPoolName = defaultConfig.IPPoolName
+	}
 	if ipPoolID == "" {
 		ipPoolID, err = access.FindIPPoolByName(classConfig.IPPoolName)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	max, ok := config.SizeToMaxVirtualServers[classConfig.Size]
-	if !ok {
-		return nil, fmt.Errorf("invalid load balancer size %s", classConfig.Size)
-	}
+	c.classes[name] = NewLBClass(name, ipPoolID, ipPoolName)
+	return nil
+}
+
+func NewLBClass(name, ipPoolID, ipPoolName string) *loadBalancerClass {
 	tags := []common.Tag{
 		{Scope: ScopeIPPoolID, Tag: ipPoolID},
 		{Scope: ScopeLBClass, Tag: name},
 	}
 	return &loadBalancerClass{
-		className:         name,
-		ipPoolName:        classConfig.IPPoolName,
-		ipPoolID:          ipPoolID,
-		size:              classConfig.Size,
-		maxVirtualServers: max,
-		tags:              tags,
-	}, nil
+		className:  name,
+		ipPoolName: ipPoolName,
+		ipPoolID:   ipPoolID,
+		tags:       tags,
+	}
 }
 
 func (c *loadBalancerClass) Tags() []common.Tag {

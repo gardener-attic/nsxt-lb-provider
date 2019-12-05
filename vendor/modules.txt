@@ -135,7 +135,7 @@ github.com/sirupsen/logrus
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
-# github.com/vmware/go-vmware-nsxt v0.0.0-20190201205556-16aa0443042d => ../go-vmware-nsxt
+# github.com/vmware/go-vmware-nsxt v0.0.0-20190201205556-16aa0443042d => github.com/MartinWeindel/go-vmware-nsxt v0.0.0-20191129144634-29aa700ba036
 github.com/vmware/go-vmware-nsxt
 github.com/vmware/go-vmware-nsxt/aaa
 github.com/vmware/go-vmware-nsxt/administration

@@ -30,7 +30,6 @@ size = MEDIUM
 
 [LoadBalancerClass "public"]
 ipPoolName = poolPublic
-size = SMALL
 
 [LoadBalancerClass "private"]
 ipPoolName = poolPrivate
@@ -43,7 +42,7 @@ tag2 = value2
 user = admin
 password = secret
 host = nsxt-server
-
+logicalRouterId = 1234
 `
 	config, err := ReadConfig(strings.NewReader(s1))
 	if err != nil {
@@ -56,17 +55,11 @@ host = nsxt-server
 	if config.LoadBalancer.Size != "MEDIUM" {
 		t.Errorf("size %s != %s", config.LoadBalancer.Size, "MEDIUM")
 	}
-	if len(config.LoadBalancerClass) != 2 {
-		t.Errorf("expected two LoadBalancerClass subsections, but got %d", len(config.LoadBalancerClass))
+	if len(config.LoadBalancerClasses) != 2 {
+		t.Errorf("expected two LoadBalancerClass subsections, but got %d", len(config.LoadBalancerClasses))
 	}
-	if config.LoadBalancerClass["public"].IPPoolName != "poolPublic" {
-		t.Errorf("public ipPoolName %s != %s", config.LoadBalancerClass["public"].IPPoolName, "poolPublic")
-	}
-	if config.LoadBalancerClass["public"].Size != "SMALL" {
-		t.Errorf("public size %s != %s", config.LoadBalancerClass["public"].Size, "SMALL")
-	}
-	if config.LoadBalancerClass["private"].Size != "MEDIUM" {
-		t.Errorf("private size %s != %s", config.LoadBalancerClass["private"].Size, "MEDIUM")
+	if config.LoadBalancerClasses["public"].IPPoolName != "poolPublic" {
+		t.Errorf("public ipPoolName %s != %s", config.LoadBalancerClasses["public"].IPPoolName, "poolPublic")
 	}
 	if len(config.AdditionalTags) != 2 || config.AdditionalTags["tag1"] != "value1" || config.AdditionalTags["tag2"] != "value2" {
 		t.Errorf("unexpected additionalTags %v", config.AdditionalTags)
@@ -79,6 +72,9 @@ host = nsxt-server
 	}
 	if config.NSXT.Host != "nsxt-server" {
 		t.Errorf("NSX-T.host %s != %s", config.NSXT.Host, "nsxt-server")
+	}
+	if config.NSXT.LogicalRouterId != "1234" {
+		t.Errorf("NSX-T.logicalRouterId %s != %s", config.NSXT.LogicalRouterId, "1234")
 	}
 	if config.NSXT.RetryMinDelay != DefaultRetryMinDelay || config.NSXT.RetryMaxDelay != DefaultRetryMaxDelay || config.NSXT.MaxRetries != DefaultMaxRetries {
 		t.Errorf("missing default values for RetryMinDelay/RetryMaxDelay/MaxRetries")

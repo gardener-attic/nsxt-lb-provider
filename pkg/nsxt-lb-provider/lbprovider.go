@@ -35,7 +35,7 @@ const (
 
 type lbProvider struct {
 	*lbService
-	classes map[string]*loadBalancerClass
+	classes *loadBalancerClasses
 	keyLock *KeyLock
 }
 
@@ -161,7 +161,7 @@ func (p *lbProvider) classFromService(service *corev1.Service) (*loadBalancerCla
 		name = config.DefaultLoadBalancerClass
 	}
 
-	class := p.classes[name]
+	class := p.classes.GetClass(name)
 	if class == nil {
 		return nil, fmt.Errorf("invalid load balancer class %s", name)
 	}

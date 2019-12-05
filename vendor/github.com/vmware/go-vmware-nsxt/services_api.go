@@ -11821,8 +11821,7 @@ func (a *ServicesApiService) UpdateSectionWithRulesUpdateWithRules(ctx context.C
 	return successPayload, localVarHttpResponse, err
 }
 
-/* new
-  ServicesApiService Get a paginated list of Lb services
+/* ServicesApiService Get a paginated list of Lb services
  @param ctx context.Context Authentication Context
 @param optional (nil or map[string]interface{}) with one or more of:
     @param "cursor" (string) Opaque cursor to be used for getting next page of records (supplied by current result page)
@@ -11918,8 +11917,7 @@ func (a *ServicesApiService) ListLoadBalancerServices(ctx context.Context, local
 	return successPayload, localVarHttpResponse, err
 }
 
-/* new
-  ServicesApiService Get a paginated list of Lb virtual servers
+/* ServicesApiService Get a paginated list of Lb virtual servers
  @param ctx context.Context Authentication Context
 @param optional (nil or map[string]interface{}) with one or more of:
     @param "cursor" (string) Opaque cursor to be used for getting next page of records (supplied by current result page)
@@ -11927,7 +11925,7 @@ func (a *ServicesApiService) ListLoadBalancerServices(ctx context.Context, local
     @param "pageSize" (int64) Maximum number of results to return in this page (server may return fewer)
     @param "sortAscending" (bool)
     @param "sortBy" (string) Field by which records are sorted
-@return l.LbVirtualServer*/
+@return l.LbVirtualServerListResult*/
 func (a *ServicesApiService) ListLoadBalancerVirtualServers(ctx context.Context, localVarOptionals map[string]interface{}) (loadbalancer.LbVirtualServerListResult, *http.Response, error) {
 	var (
 		localVarHttpMethod = strings.ToUpper("Get")
@@ -12015,8 +12013,7 @@ func (a *ServicesApiService) ListLoadBalancerVirtualServers(ctx context.Context,
 	return successPayload, localVarHttpResponse, err
 }
 
-/* new
-  ServicesApiService Get a paginated list of Lb pools
+/* ServicesApiService Get a paginated list of Lb pools
  @param ctx context.Context Authentication Context
 @param optional (nil or map[string]interface{}) with one or more of:
     @param "cursor" (string) Opaque cursor to be used for getting next page of records (supplied by current result page)
@@ -12024,7 +12021,7 @@ func (a *ServicesApiService) ListLoadBalancerVirtualServers(ctx context.Context,
     @param "pageSize" (int64) Maximum number of results to return in this page (server may return fewer)
     @param "sortAscending" (bool)
     @param "sortBy" (string) Field by which records are sorted
-@return l.LbVirtualServer*/
+@return l.LbPoolListResult*/
 func (a *ServicesApiService) ListLoadBalancerPools(ctx context.Context, localVarOptionals map[string]interface{}) (loadbalancer.LbPoolListResult, *http.Response, error) {
 	var (
 		localVarHttpMethod = strings.ToUpper("Get")
@@ -12112,8 +12109,7 @@ func (a *ServicesApiService) ListLoadBalancerPools(ctx context.Context, localVar
 	return successPayload, localVarHttpResponse, err
 }
 
-/* new
-  ServicesApiService Get a paginated list of Lb monitors
+/* ServicesApiService Get a paginated list of Lb monitors
  @param ctx context.Context Authentication Context
 @param optional (nil or map[string]interface{}) with one or more of:
     @param "cursor" (string) Opaque cursor to be used for getting next page of records (supplied by current result page)

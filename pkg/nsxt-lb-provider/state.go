@@ -19,7 +19,6 @@ package nsxt_lb_provider
 
 import (
 	"fmt"
-	"github.com/gardener/nsxt-lb-provider/pkg/nsxt-lb-provider/config"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -81,13 +80,7 @@ func (s *state) Process(class *loadBalancerClass) error {
 		className := getTag(s.servers[0].Tags, ScopeLBClass)
 		ipPoolID := getTag(s.servers[0].Tags, ScopeIPPoolID)
 		if class.className != className || class.ipPoolID != ipPoolID {
-			class, err = newLbClass(s.access, className, &config.LoadBalancerConfig{
-				IPPoolID: ipPoolID,
-				Size:     class.size,
-			})
-			if err != nil {
-				return err
-			}
+			class = NewLBClass(className, ipPoolID, "")
 		}
 	}
 	s.class = class

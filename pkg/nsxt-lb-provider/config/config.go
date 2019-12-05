@@ -46,16 +46,21 @@ var SizeToMaxVirtualServers = map[string]int{
 }
 
 type Config struct {
-	LoadBalancer      *LoadBalancerConfig            `gcfg:"LoadBalancer"`
-	LoadBalancerClass map[string]*LoadBalancerConfig `gcfg:"LoadBalancerClass"`
-	NSXT              NsxtConfig                     `gcfg:"NSX-T"`
-	AdditionalTags    map[string]string              `gcfg:"Tags"`
+	LoadBalancer        LoadBalancerConfig                  `gcfg:"LoadBalancer"`
+	LoadBalancerClasses map[string]*LoadBalancerClassConfig `gcfg:"LoadBalancerClass"`
+	NSXT                NsxtConfig                          `gcfg:"NSX-T"`
+	AdditionalTags      map[string]string                   `gcfg:"Tags"`
 }
 
 type LoadBalancerConfig struct {
 	IPPoolName string `gcfg:"ipPoolName"`
 	IPPoolID   string `gcfg:"ipPoolID"`
 	Size       string `gcfg:"size"`
+}
+
+type LoadBalancerClassConfig struct {
+	IPPoolName string `gcfg:"ipPoolName"`
+	IPPoolID   string `gcfg:"ipPoolID"`
 }
 
 // Config is used to read and store information from the cloud configuration file
@@ -82,33 +87,26 @@ type NsxtConfig struct {
 }
 
 func (cfg *Config) validateConfig() error {
-	if cfg.LoadBalancer == nil {
-		if _, ok := cfg.LoadBalancerClass[DefaultLoadBalancerClass]; !ok {
+	if _, ok := SizeToMaxVirtualServers[cfg.LoadBalancer.Size]; !ok {
+		msg := "load balancer size is invalid"
+		klog.Errorf(msg)
+		return fmt.Errorf(msg)
+	}
+	if cfg.LoadBalancer.IPPoolID == "" && cfg.LoadBalancer.IPPoolName == "" {
+		class, ok := cfg.LoadBalancerClasses[DefaultLoadBalancerClass]
+		if !ok {
 			msg := "no default load balancer class defined"
+			klog.Errorf(msg)
+			return fmt.Errorf(msg)
+		} else if class.IPPoolName == "" && class.IPPoolID == "" {
+			msg := "default load balancer class: ipPoolName and ipPoolID is empty"
 			klog.Errorf(msg)
 			return fmt.Errorf(msg)
 		}
 	} else {
-		if _, ok := SizeToMaxVirtualServers[cfg.LoadBalancer.Size]; !ok {
-			msg := "load balancer size is invalid"
-			klog.Errorf(msg)
-			return fmt.Errorf(msg)
-		}
 		if cfg.LoadBalancer.IPPoolName == "" && cfg.LoadBalancer.IPPoolID == "" {
 			msg := "load balancer ipPoolName and ipPoolID is empty"
 			klog.Errorf(msg)
-			return fmt.Errorf(msg)
-		}
-	}
-	for name, class := range cfg.LoadBalancerClass {
-		if _, ok := SizeToMaxVirtualServers[class.Size]; !ok {
-			msg := fmt.Sprintf("load balancer class %s: size is invalid", name)
-			klog.Error(msg)
-			return fmt.Errorf(msg)
-		}
-		if class.IPPoolName == "" && class.IPPoolID == "" {
-			msg := fmt.Sprintf("load balancer class %s: ipPoolName and ipPoolID is empty", name)
-			klog.Error(msg)
 			return fmt.Errorf(msg)
 		}
 	}
@@ -241,21 +239,14 @@ func ReadConfig(config io.Reader) (*Config, error) {
 	if cfg.NSXT.RetryMaxDelay == 0 {
 		cfg.NSXT.RetryMaxDelay = DefaultRetryMaxDelay
 	}
-	if cfg.LoadBalancerClass == nil {
-		cfg.LoadBalancerClass = map[string]*LoadBalancerConfig{}
+	if cfg.LoadBalancerClasses == nil {
+		cfg.LoadBalancerClasses = map[string]*LoadBalancerClassConfig{}
 	}
-	for _, class := range cfg.LoadBalancerClass {
+	for _, class := range cfg.LoadBalancerClasses {
 		if class.IPPoolName == "" {
 			if class.IPPoolID == "" {
-				if cfg.LoadBalancer != nil {
-					class.IPPoolID = cfg.LoadBalancer.IPPoolID
-					class.IPPoolName = cfg.LoadBalancer.IPPoolName
-				}
-			}
-		}
-		if class.Size == "" {
-			if cfg.LoadBalancer != nil {
-				class.Size = cfg.LoadBalancer.Size
+				class.IPPoolID = cfg.LoadBalancer.IPPoolID
+				class.IPPoolName = cfg.LoadBalancer.IPPoolName
 			}
 		}
 	}
