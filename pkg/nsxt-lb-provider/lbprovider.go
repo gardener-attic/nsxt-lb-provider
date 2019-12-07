@@ -57,7 +57,7 @@ func newLBProvider(config *config.Config) (*lbProvider, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "creating load balancer classes failed")
 	}
-	return &lbProvider{lbService: newLbService(access), classes: classes, keyLock: NewKeyLock()}, nil
+	return &lbProvider{lbService: newLbService(access, config.LoadBalancer.LBServiceId), classes: classes, keyLock: NewKeyLock()}, nil
 }
 
 func setupNsxtBroker(nsxtConfig *config.NsxtConfig) (NsxtBroker, error) {

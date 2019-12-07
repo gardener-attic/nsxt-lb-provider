@@ -96,6 +96,18 @@ func (b *inmemoryNsxtBroker) CreateLoadBalancerService(service loadbalancer.LbSe
 	return service, nil
 }
 
+func (b *inmemoryNsxtBroker) ReadLoadBalancerService(id string) (loadbalancer.LbService, error) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	for _, service := range b.lbServices {
+		if service.Id == id {
+			return service, nil
+		}
+	}
+	return loadbalancer.LbService{}, fmt.Errorf("LbService %s not found", id)
+}
+
 func (b *inmemoryNsxtBroker) ListLoadBalancerServices() (loadbalancer.LbServiceListResult, error) {
 	b.lock.Lock()
 	defer b.lock.Unlock()

@@ -24,7 +24,7 @@ import (
 
 type Access interface {
 	CreateLoadBalancerService(clusterName string) (*loadbalancer.LbService, error)
-	FindFreeLoadBalancerService(clusterName string) (lbService *loadbalancer.LbService, err error)
+	FindLoadBalancerService(clusterName string, lbServiceId string) (lbService *loadbalancer.LbService, err error)
 	FindLoadBalancerServiceForVirtualServer(clusterName string, serverId string) (lbService *loadbalancer.LbService, err error)
 	UpdateLoadBalancerService(lbService *loadbalancer.LbService) error
 	DeleteLoadBalancerService(id string) error
