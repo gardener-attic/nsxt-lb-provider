@@ -56,7 +56,7 @@ type LoadBalancerConfig struct {
 	IPPoolName  string `gcfg:"ipPoolName"`
 	IPPoolID    string `gcfg:"ipPoolID"`
 	Size        string `gcfg:"size"`
-	LBServiceId string `gcfg:"LBServiceId"`
+	LBServiceId string `gcfg:"lbServiceId"`
 }
 
 type LoadBalancerClassConfig struct {
