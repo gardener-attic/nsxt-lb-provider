@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	AnnotLoadBalancerClass = "loadbalancer.vsphere.class"
+	AnnotLoadBalancerClass = "loadbalancer.vmware.io/class"
 )
 
 type lbProvider struct {
