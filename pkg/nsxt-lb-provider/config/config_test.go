@@ -27,6 +27,7 @@ func TestReadConfig(t *testing.T) {
 [LoadBalancer]
 ipPoolName = pool1
 size = MEDIUM
+lbServiceId = 4711
 
 [LoadBalancerClass "public"]
 ipPoolName = poolPublic
@@ -51,6 +52,9 @@ logicalRouterId = 1234
 	}
 	if config.LoadBalancer.IPPoolName != "pool1" {
 		t.Errorf("ipPoolName %s != %s", config.LoadBalancer.IPPoolName, "pool1")
+	}
+	if config.LoadBalancer.LBServiceId != "4711" {
+		t.Errorf("lbServiceId %s != %s", config.LoadBalancer.LBServiceId, "4711")
 	}
 	if config.LoadBalancer.Size != "MEDIUM" {
 		t.Errorf("size %s != %s", config.LoadBalancer.Size, "MEDIUM")

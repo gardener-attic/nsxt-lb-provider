@@ -53,9 +53,10 @@ type Config struct {
 }
 
 type LoadBalancerConfig struct {
-	IPPoolName string `gcfg:"ipPoolName"`
-	IPPoolID   string `gcfg:"ipPoolID"`
-	Size       string `gcfg:"size"`
+	IPPoolName  string `gcfg:"ipPoolName"`
+	IPPoolID    string `gcfg:"ipPoolID"`
+	Size        string `gcfg:"size"`
+	LBServiceId string `gcfg:"lbServiceId"`
 }
 
 type LoadBalancerClassConfig struct {
@@ -87,6 +88,11 @@ type NsxtConfig struct {
 }
 
 func (cfg *Config) validateConfig() error {
+	if cfg.LoadBalancer.LBServiceId == "" && cfg.NSXT.LogicalRouterId == "" {
+		msg := "load balancer servive id or logical router id required"
+		klog.Errorf(msg)
+		return fmt.Errorf(msg)
+	}
 	if _, ok := SizeToMaxVirtualServers[cfg.LoadBalancer.Size]; !ok {
 		msg := "load balancer size is invalid"
 		klog.Errorf(msg)
@@ -130,11 +136,6 @@ func (cfg *NsxtConfig) validateConfig() error {
 	}
 	if cfg.Host == "" {
 		msg := "host is empty"
-		klog.Errorf(msg)
-		return fmt.Errorf(msg)
-	}
-	if cfg.LogicalRouterId == "" {
-		msg := "logicalRouterId is empty"
 		klog.Errorf(msg)
 		return fmt.Errorf(msg)
 	}

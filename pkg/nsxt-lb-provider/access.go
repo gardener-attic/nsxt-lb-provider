@@ -89,7 +89,21 @@ func (a *access) CreateLoadBalancerService(clusterName string) (*loadbalancer.Lb
 	return &result, nil
 }
 
-func (a *access) FindFreeLoadBalancerService(clusterName string) (*loadbalancer.LbService, error) {
+func (a *access) FindLoadBalancerService(clusterName string, id string) (*loadbalancer.LbService, error) {
+	if id != "" {
+		result, err := a.broker.ReadLoadBalancerService(id)
+		if err != nil {
+			return nil, err
+		}
+		if a.config.NSXT.LogicalRouterId != "" && result.Attachment.TargetId != a.config.NSXT.LogicalRouterId {
+			return nil, fmt.Errorf("load balancer service %q is configured for router %q not %q",
+				result.Id,
+				result.Attachment.TargetId,
+				a.config.NSXT.LogicalRouterId,
+			)
+		}
+		return &result, nil
+	}
 	return a.findLoadBalancerService(clusterName, func(item *loadbalancer.LbService) bool {
 		free := config.SizeToMaxVirtualServers[item.Size] - len(item.VirtualServerIds)
 		return free > 0
@@ -104,8 +118,15 @@ func (a *access) findLoadBalancerService(clusterName string, f selector) (*loadb
 		return nil, errors.Wrapf(err, "listing load balancer services failed")
 	}
 	for _, item := range list.Results {
-		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName)) && f(&item) {
-			return &item, nil
+		if a.config.NSXT.LogicalRouterId != "" && item.Attachment.TargetId == a.config.NSXT.LogicalRouterId {
+			if f(&item) {
+				return &item, nil
+			}
+		}
+		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName)) {
+			if f(&item) {
+				return &item, nil
+			}
 		}
 	}
 	return nil, nil

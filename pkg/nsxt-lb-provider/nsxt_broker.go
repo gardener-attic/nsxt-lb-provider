@@ -27,6 +27,7 @@ import (
 
 type NsxtBroker interface {
 	ListIPPools() (manager.IpPoolListResult, error)
+	ReadLoadBalancerService(id string) (loadbalancer.LbService, error)
 	CreateLoadBalancerService(service loadbalancer.LbService) (loadbalancer.LbService, error)
 	ListLoadBalancerServices() (loadbalancer.LbServiceListResult, error)
 	UpdateLoadBalancerService(service loadbalancer.LbService) (loadbalancer.LbService, error)
@@ -61,6 +62,11 @@ func NewNsxtBroker(client *nsxt.APIClient) NsxtBroker {
 
 func (b *nsxtBroker) ListIPPools() (manager.IpPoolListResult, error) {
 	result, _, err := b.client.PoolManagementApi.ListIpPools(b.client.Context, nil)
+	return result, err
+}
+
+func (b *nsxtBroker) ReadLoadBalancerService(id string) (loadbalancer.LbService, error) {
+	result, _, err := b.client.ServicesApi.ReadLoadBalancerService(b.client.Context, id)
 	return result, err
 }
 

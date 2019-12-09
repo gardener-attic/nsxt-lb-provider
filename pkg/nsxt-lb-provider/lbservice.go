@@ -17,29 +17,39 @@
 
 package nsxt_lb_provider
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 type lbService struct {
-	access Access
-	lbLock sync.Mutex
+	access      Access
+	lbServiceId string
+	managed     bool
+	lbLock      sync.Mutex
 }
 
-func newLbService(access Access) *lbService {
-	return &lbService{access: access}
+func newLbService(access Access, lbServiceId string) *lbService {
+	return &lbService{access: access, lbServiceId: lbServiceId, managed: lbServiceId != ""}
 }
 
 func (s *lbService) addVirtualServerToLoadBalancerService(clusterName, serverId string) error {
 	s.lbLock.Lock()
 	defer s.lbLock.Unlock()
 
-	lbService, err := s.access.FindFreeLoadBalancerService(clusterName)
+	lbService, err := s.access.FindLoadBalancerService(clusterName, s.lbServiceId)
 	if err != nil {
 		return err
 	}
 	if lbService == nil {
-		lbService, err = s.access.CreateLoadBalancerService(clusterName)
-		if err != nil {
-			return err
+		if s.managed {
+			lbService, err = s.access.CreateLoadBalancerService(clusterName)
+			if err != nil {
+				return err
+			}
+			s.lbServiceId = lbService.Id
+		} else {
+			return fmt.Errorf("no more virtual servers for load balancer service")
 		}
 	}
 	lbService.VirtualServerIds = append(lbService.VirtualServerIds, serverId)
@@ -66,7 +76,7 @@ func (s *lbService) removeVirtualServerFromLoadBalancerService(clusterName, serv
 				break
 			}
 		}
-		if len(lbService.VirtualServerIds) == 0 {
+		if s.managed && lbService.Id == s.lbServiceId && len(lbService.VirtualServerIds) == 0 {
 			err := s.access.DeleteLoadBalancerService(lbService.Id)
 			if err != nil {
 				return err
