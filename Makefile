@@ -22,15 +22,19 @@ LD_FLAGS                    := "-w -X github.com/gardener/gardener-extensions/pk
 VERIFY                      := true
 
 
-.PHONY: build-local build release test
-
+.PHONY: build
 build:
-	GOOS=linux GOARCH=amd64 go build -mod=vendor -o $(EXECUTABLE) \
-	    -ldflags "-X main.Version=$(VERSION)-$(shell git rev-parse HEAD)"\
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+	   -mod=vendor \
+	   -o bin/rel/$(EXECUTABLE) \
+	   -ldflags "-X main.Version=$(VERSION)" \
 	    ./cmd/$(EXECUTABLE)
 
+.PHONY: build-local
 build-local:
-	go build -mod=vendor -o $(EXECUTABLE) \
+	go build \
+	    -mod=vendor \
+	    -o $(EXECUTABLE) \
 	    -ldflags "-X main.Version=$(VERSION)-$(shell git rev-parse HEAD)"\
 	    ./cmd/$(EXECUTABLE)
 

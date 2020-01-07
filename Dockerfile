@@ -15,8 +15,6 @@
 
 FROM golang:1.13 AS builder
 
-RUN curl -sfL "https://install.goreleaser.com/github.com/golangci/golangci-lint.sh" | sh -s -- -b $(go env GOPATH)/bin v1.21.0
-
 WORKDIR /nsxt-lb-provider-manager/
 
 ARG VERIFY=true

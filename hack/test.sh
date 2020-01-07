@@ -21,4 +21,7 @@ source "$DIRNAME/common.sh"
 
 header_text "Test"
 
-# GO111MODULE=on ginkgo -mod=vendor --skipPackage="${SKIP_TESTS}" -r "${SOURCE_TREES[@]}"
+# Install Ginkgo (test framework) to be able to execute the tests.
+go install -mod=vendor github.com/onsi/ginkgo/ginkgo
+
+GO111MODULE=on ginkgo -mod=vendor --skipPackage="${SKIP_TESTS}" -r "${SOURCE_TREES[@]}"

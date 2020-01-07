@@ -29,7 +29,7 @@ import (
 	_ "k8s.io/kubernetes/pkg/util/prometheusclientgo" // for client metric registration
 	_ "k8s.io/kubernetes/pkg/version/prometheus"      // for version metric registration
 
-	lbprovider "github.com/gardener/nsxt-lb-provider/pkg/nsxt-lb-provider"
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -37,15 +37,17 @@ import (
 )
 
 const (
-	AppName          = "nsxt-lb-provider"
+	// AppName is the application name
+	AppName = "nsxt-lb-provider"
+	// LockResourceName is the resource name used for locking
 	LockResourceName = "lb-controller-manager"
 )
 
 var version = "version-unknown"
 
 func main() {
-	lbprovider.Version = version
-	lbprovider.AppName = AppName
+	loadbalancer.Version = version
+	loadbalancer.AppName = AppName
 
 	rand.Seed(time.Now().UTC().UnixNano())
 
@@ -69,8 +71,8 @@ func main() {
 	command.Flags().VisitAll(func(flag *pflag.Flag) {
 		switch flag.Name {
 		case "cloud-provider":
-			_ = flag.Value.Set(lbprovider.ProviderName)
-			flag.DefValue = lbprovider.ProviderName
+			_ = flag.Value.Set(loadbalancer.ProviderName)
+			flag.DefValue = loadbalancer.ProviderName
 		case "leader-elect-resource-name":
 			_ = flag.Value.Set(LockResourceName)
 			flag.DefValue = LockResourceName
@@ -89,7 +91,7 @@ func main() {
 			os.Exit(0)
 		}
 		if clusterNameFlag != nil {
-			lbprovider.ClusterName = (*clusterNameFlag).String()
+			loadbalancer.ClusterName = (*clusterNameFlag).String()
 		} else {
 			panic("cluster-name flag not found")
 		}
