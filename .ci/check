@@ -16,4 +16,6 @@
 
 set -e
 
+cd "$(readlink -f "$(dirname ${0})/..")"
+
 make check
