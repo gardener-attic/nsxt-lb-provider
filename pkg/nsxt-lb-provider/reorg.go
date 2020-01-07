@@ -19,6 +19,7 @@ package nsxt_lb_provider
 
 import (
 	"context"
+	"k8s.io/klog"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -42,6 +43,7 @@ func (p *lbProvider) reorg(client clientcorev1.ServiceInterface, stop <-chan str
 				next = maxPeriod
 				lastErrNext = 0
 			} else {
+				klog.Warningf("reorg failed with %s", err)
 				if lastErrNext == 0 {
 					lastErrNext = 500 * time.Millisecond
 				} else {
@@ -58,6 +60,7 @@ func (p *lbProvider) reorg(client clientcorev1.ServiceInterface, stop <-chan str
 }
 
 func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
+	klog.Infof("starting reorg...")
 	list, err := client.List(metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -104,6 +107,7 @@ func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
 		}
 	}
 
+	klog.Infof("reorg: %d existing services, artefacts for %d services", len(services), len(lbs))
 	for lb := range lbs {
 		if svc, ok := services[lb]; !ok || svc.Spec.Type != corev1.ServiceTypeLoadBalancer {
 			service := &corev1.Service{
@@ -112,6 +116,7 @@ func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
 					Name:      lb.Name,
 				},
 			}
+			klog.Infof("deleting artefacts for non-existing service %s/%s", lb.Namespace, lb.Name)
 			err = p.EnsureLoadBalancerDeleted(context.TODO(), ClusterName, service)
 			if err != nil {
 				return err
