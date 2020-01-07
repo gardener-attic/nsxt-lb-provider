@@ -20,8 +20,24 @@ source "$DIRNAME/common.sh"
 
 header_text "Check"
 
-echo "Executing golangci-lint"
-golangci-lint run --skip-dirs-use-default --timeout 2m --modules-download-mode vendor "${SOURCE_TREES[@]}"
+go install -mod=vendor golang.org/x/lint/golint
+
+export GOFLAGS=-mod=vendor
+
+###############################################################################
+PACKAGES="$(go list -e ./... | grep -vE '/vendor/')"
+LINT_FOLDERS="$(echo ${PACKAGES} | sed "s|github.com/gardener/nsxt-lb-provider|.|g")"
+
+# Execute static code checks.
+echo "Executing go vet"
+go vet ${PACKAGES}
+
+# Execute lint checks.
+echo "Executing golint"
+for package in ${LINT_FOLDERS}; do
+    golint -set_exit_status $(find $package -maxdepth 1 -name "*.go" | grep -vE 'zz_generated|_test.go')
+done
+
 
 echo "Checking for format issues with gofmt"
 unformatted_files="$(gofmt -l ./cmd ./pkg)"

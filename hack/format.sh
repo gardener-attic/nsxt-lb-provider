@@ -21,4 +21,4 @@ source "$DIRNAME/common.sh"
 
 header_text "Format"
 
-gofmt -l -w ./pkg ./cmd
+GOFLAGS=-mod=vendor gofmt -l -w ./pkg ./cmd
