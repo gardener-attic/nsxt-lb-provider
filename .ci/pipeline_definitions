@@ -9,14 +9,14 @@ nsxt-lb-provider:
         inject_effective_version: true
       publish:
         dockerimages:
-          nsxt-lb-provider:
+          nsxt-lb-provider-manager:
             inputs:
               repos:
                 source: ~ # default
               steps:
                 build: ~
             registry: 'gcr-readwrite'
-            image: 'eu.gcr.io/gardener-project/gardener/nsxt-lb-provider'
+            image: eu.gcr.io/gardener-project/gardener/nsxt-lb-provider-manager
     steps:
       check:
         image: 'golang:1.13.3'

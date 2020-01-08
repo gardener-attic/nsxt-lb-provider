@@ -28,8 +28,6 @@ RUN make VERIFY=$VERIFY all
 
 FROM alpine:latest AS nsxt-lb-provider-manager
 
-RUN apk add --update bash curl
-
 WORKDIR /
 
 COPY --from=builder /go/bin/nsxt-lb-provider-manager /nsxt-lb-provider-manager
