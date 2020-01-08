@@ -102,10 +102,14 @@ func (a *access) FindLoadBalancerService(clusterName string, id string) (*loadba
 		if err != nil {
 			return nil, err
 		}
-		if a.config.NSXT.LogicalRouterID != "" && result.Attachment.TargetId != a.config.NSXT.LogicalRouterID {
+		if a.config.NSXT.LogicalRouterID != "" && (result.Attachment == nil || result.Attachment.TargetId != a.config.NSXT.LogicalRouterID) {
+			targetID := "nil"
+			if result.Attachment != nil {
+				targetID = result.Attachment.TargetId
+			}
 			return nil, fmt.Errorf("load balancer service %q is configured for router %q not %q",
 				result.Id,
-				result.Attachment.TargetId,
+				targetID,
 				a.config.NSXT.LogicalRouterID,
 			)
 		}
@@ -125,7 +129,7 @@ func (a *access) findLoadBalancerService(clusterName string, f selector) (*loadb
 		return nil, errors.Wrapf(err, "listing load balancer services failed")
 	}
 	for _, item := range list.Results {
-		if a.config.NSXT.LogicalRouterID != "" && item.Attachment.TargetId == a.config.NSXT.LogicalRouterID {
+		if a.config.NSXT.LogicalRouterID != "" && item.Attachment != nil && item.Attachment.TargetId == a.config.NSXT.LogicalRouterID {
 			if f(&item) {
 				return &item, nil
 			}
