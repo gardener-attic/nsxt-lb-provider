@@ -14,7 +14,7 @@
 EXECUTABLE                  := nsxt-lb-provider-manager
 
 REGISTRY                    := eu.gcr.io/gardener-project
-IMAGE_PREFIX                := $(REGISTRY)/test
+IMAGE_PREFIX                := $(REGISTRY)/gardener
 REPO_ROOT                   := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 HACK_DIR                    := $(REPO_ROOT)/hack
 VERSION                     := $(shell bash -c 'source $(HACK_DIR)/common.sh && echo $$VERSION')

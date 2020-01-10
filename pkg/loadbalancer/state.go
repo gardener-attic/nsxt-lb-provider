@@ -186,33 +186,48 @@ func (s *state) deleteOrphanTCPMonitors(validTCPMonitorIds sets.String) error {
 	return nil
 }
 
-func (s *state) allocateResources() error {
-	var err error
+func (s *state) allocateResources() (allocated bool, err error) {
 	if s.ipAddress == "" {
 		s.ipAddress, err = s.access.AllocateExternalIPAddress(s.class.ipPoolID)
 		if err != nil {
-			return err
+			return
 		}
+		allocated = true
 		s.CtxInfof("allocated IP address %s from pool %s", s.ipAddress, s.class.ipPoolID)
 	}
+	return
+}
+
+func (s *state) releaseResources() error {
+	if s.ipAddress != "" {
+		exists, err := s.access.IsAllocatedExternalIPAddress(s.class.ipPoolID, s.ipAddress)
+		if err != nil {
+			return err
+		}
+		if exists {
+			s.CtxInfof("releasing IP address %s to pool %s", s.ipAddress, s.class.ipPoolID)
+			err = s.access.ReleaseExternalIPAddress(s.class.ipPoolID, s.ipAddress)
+			if err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func (s *state) loggedReleaseResources() {
+	err := s.releaseResources()
+	if err != nil {
+		s.CtxInfof("failed to release IP address %s to pool %s", s.ipAddress, s.class.ipPoolID)
+	}
 }
 
 // Finish performs cleanup after Process
 func (s *state) Finish() (*corev1.LoadBalancerStatus, error) {
 	if len(s.service.Spec.Ports) == 0 {
-		if s.ipAddress != "" {
-			exists, err := s.access.IsAllocatedExternalIPAddress(s.class.ipPoolID, s.ipAddress)
-			if err != nil {
-				return nil, err
-			}
-			if exists {
-				s.CtxInfof("releasing IP address %s to pool %s", s.ipAddress, s.class.ipPoolID)
-				err = s.access.ReleaseExternalIPAddress(s.class.ipPoolID, s.ipAddress)
-				if err != nil {
-					return nil, err
-				}
-			}
+		err := s.releaseResources()
+		if err != nil {
+			return nil, err
 		}
 		return nil, nil
 	}
@@ -369,13 +384,16 @@ func (s *state) getVirtualServer(mapping Mapping, poolID string) (*loadbalancer.
 }
 
 func (s *state) createVirtualServer(mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error) {
-	err := s.allocateResources()
+	allocated, err := s.allocateResources()
 	if err != nil {
 		return nil, err
 	}
 
 	server, err := s.access.CreateVirtualServer(s.clusterName, s.objectName, s.class, s.ipAddress, mapping, poolID)
 	if err != nil {
+		if allocated {
+			s.loggedReleaseResources()
+		}
 		return nil, err
 	}
 	s.CtxInfof("created LbVirtualServer %s for %s", server.Id, mapping)
@@ -383,6 +401,9 @@ func (s *state) createVirtualServer(mapping Mapping, poolID string) (*loadbalanc
 	err = s.lbService.addVirtualServerToLoadBalancerService(s.clusterName, server.Id)
 	if err != nil {
 		_ = s.access.DeleteVirtualServer(server.Id)
+		if allocated {
+			s.loggedReleaseResources()
+		}
 		return nil, err
 	}
 	return server, nil

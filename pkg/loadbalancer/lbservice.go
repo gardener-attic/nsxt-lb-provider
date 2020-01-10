@@ -30,7 +30,7 @@ type lbService struct {
 }
 
 func newLbService(access Access, lbServiceID string) *lbService {
-	return &lbService{access: access, lbServiceID: lbServiceID, managed: lbServiceID != ""}
+	return &lbService{access: access, lbServiceID: lbServiceID, managed: lbServiceID == ""}
 }
 
 func (s *lbService) addVirtualServerToLoadBalancerService(clusterName, serverID string) error {
