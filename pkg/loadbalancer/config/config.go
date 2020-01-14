@@ -63,10 +63,11 @@ type Config struct {
 
 // LoadBalancerConfig contains the configuration for the load balancer itself
 type LoadBalancerConfig struct {
-	IPPoolName  string `gcfg:"ipPoolName"`
-	IPPoolID    string `gcfg:"ipPoolID"`
-	Size        string `gcfg:"size"`
-	LBServiceID string `gcfg:"lbServiceId"`
+	IPPoolName      string `gcfg:"ipPoolName"`
+	IPPoolID        string `gcfg:"ipPoolID"`
+	Size            string `gcfg:"size"`
+	LogicalRouterID string `gcfg:"logicalRouterId"`
+	LBServiceID     string `gcfg:"lbServiceId"`
 }
 
 // LoadBalancerClassConfig contains the configuration for a load balancer class
@@ -95,11 +96,10 @@ type NsxtConfig struct {
 	CAFile             string   `gcfg:"ca_file"`
 	SimulateInMemory   bool     `gcfg:"simulateInMemory"`
 	SimulatedIPPools   []string `gcfg:"simulatedIPPools"`
-	LogicalRouterID    string   `gcfg:"logicalRouterId"`
 }
 
 func (cfg *Config) validateConfig() error {
-	if cfg.LoadBalancer.LBServiceID == "" && cfg.NSXT.LogicalRouterID == "" {
+	if cfg.LoadBalancer.LBServiceID == "" && cfg.LoadBalancer.LogicalRouterID == "" {
 		msg := "load balancer servive id or logical router id required"
 		klog.Errorf(msg)
 		return fmt.Errorf(msg)

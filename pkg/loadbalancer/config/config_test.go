@@ -28,6 +28,7 @@ func TestReadConfig(t *testing.T) {
 ipPoolName = pool1
 size = MEDIUM
 lbServiceId = 4711
+logicalRouterId = 1234
 
 [LoadBalancerClass "public"]
 ipPoolName = poolPublic
@@ -43,7 +44,6 @@ tag2 = value2
 user = admin
 password = secret
 host = nsxt-server
-logicalRouterId = 1234
 `
 	config, err := ReadConfig(strings.NewReader(s1))
 	if err != nil {
@@ -77,8 +77,8 @@ logicalRouterId = 1234
 	if config.NSXT.Host != "nsxt-server" {
 		t.Errorf("NSX-T.host %s != %s", config.NSXT.Host, "nsxt-server")
 	}
-	if config.NSXT.LogicalRouterID != "1234" {
-		t.Errorf("NSX-T.logicalRouterId %s != %s", config.NSXT.LogicalRouterID, "1234")
+	if config.LoadBalancer.LogicalRouterID != "1234" {
+		t.Errorf("NSX-T.logicalRouterId %s != %s", config.LoadBalancer.LogicalRouterID, "1234")
 	}
 	if config.NSXT.RetryMinDelay != DefaultRetryMinDelay || config.NSXT.RetryMaxDelay != DefaultRetryMaxDelay || config.NSXT.MaxRetries != DefaultMaxRetries {
 		t.Errorf("missing default values for RetryMinDelay/RetryMaxDelay/MaxRetries")
