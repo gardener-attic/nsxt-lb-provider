@@ -86,14 +86,14 @@ type NsxtConfig struct {
 	Host string `gcfg:"host"`
 	// True if vCenter uses self-signed cert.
 	InsecureFlag       bool     `gcfg:"insecure-flag"`
-	RemoteAuth         bool     `gcfg:"remote_auth"`
-	MaxRetries         int      `gcfg:"max_retries"`
-	RetryMinDelay      int      `gcfg:"retry_min_delay"`
-	RetryMaxDelay      int      `gcfg:"retry_max_delay"`
-	RetryOnStatusCodes []int    `gcfg:"retry_on_status_codes"`
-	ClientAuthCertFile string   `gcfg:"client_auth_cert_file"`
-	ClientAuthKeyFile  string   `gcfg:"client_auth_key_file"`
-	CAFile             string   `gcfg:"ca_file"`
+	RemoteAuth         bool     `gcfg:"remote-auth"`
+	MaxRetries         int      `gcfg:"max-retries"`
+	RetryMinDelay      int      `gcfg:"retry-min-delay"`
+	RetryMaxDelay      int      `gcfg:"retry-max-delay"`
+	RetryOnStatusCodes []int    `gcfg:"retry-on-status-codes"`
+	ClientAuthCertFile string   `gcfg:"client-auth-cert-file"`
+	ClientAuthKeyFile  string   `gcfg:"client-auth-key-file"`
+	CAFile             string   `gcfg:"ca-file"`
 	SimulateInMemory   bool     `gcfg:"simulateInMemory"`
 	SimulatedIPPools   []string `gcfg:"simulatedIPPools"`
 }

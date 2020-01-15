@@ -8,7 +8,7 @@ require (
 	github.com/pkg/errors v0.8.0
 	github.com/spf13/cobra v0.0.5
 	github.com/spf13/pflag v1.0.3
-	github.com/vmware/go-vmware-nsxt v0.0.0-20190201205556-16aa0443042d // master
+	github.com/vmware/go-vmware-nsxt v0.0.0-20200114231430-33a5af043f2e // master
 	golang.org/x/lint v0.0.0-20190409202823-959b441ac422
 	gopkg.in/gcfg.v1 v1.2.3
 	k8s.io/api v0.0.0
@@ -21,7 +21,6 @@ require (
 )
 
 replace (
-	github.com/vmware/go-vmware-nsxt => github.com/MartinWeindel/go-vmware-nsxt v0.0.0-20191129144634-29aa700ba036
 	gopkg.in/gcfg.v1 => github.com/mandelsoft/gcfg v1.2.4-0.20191118133708-71f203a139d3
 	k8s.io/api => k8s.io/api v0.0.0-20191114100352-16d7abae0d2a // kubernetes-1.16.3
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.0.0-20191114105449-027877536833 // kubernetes-1.16.3
