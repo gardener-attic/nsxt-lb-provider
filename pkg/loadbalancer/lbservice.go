@@ -76,7 +76,7 @@ func (s *lbService) removeVirtualServerFromLoadBalancerService(clusterName, serv
 				break
 			}
 		}
-		if s.managed && lbService.Id == s.lbServiceID && len(lbService.VirtualServerIds) == 0 {
+		if s.managed && len(lbService.VirtualServerIds) == 0 {
 			err := s.access.DeleteLoadBalancerService(lbService.Id)
 			if err != nil {
 				return err
