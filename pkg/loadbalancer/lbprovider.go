@@ -46,25 +46,25 @@ var ClusterName string
 
 var _ cloudprovider.LoadBalancer = &lbProvider{}
 
-func newLBProvider(config *config.Config) (*lbProvider, error) {
-	broker, err := setupNsxtBroker(&config.NSXT)
+func newLBProvider(cfg *config.LBConfig) (*lbProvider, error) {
+	broker, err := setupNsxtBroker(&cfg.NSXT, cfg.NSXTSimulation)
 	if err != nil {
 		return nil, err
 	}
-	access, err := NewAccess(broker, config)
+	access, err := NewAccess(broker, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating access handler failed")
 	}
-	classes, err := setupClasses(access, config)
+	classes, err := setupClasses(access, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating load balancer classes failed")
 	}
-	return &lbProvider{lbService: newLbService(access, config.LoadBalancer.LBServiceID), classes: classes, keyLock: newKeyLock()}, nil
+	return &lbProvider{lbService: newLbService(access, cfg.LoadBalancer.LBServiceID), classes: classes, keyLock: newKeyLock()}, nil
 }
 
-func setupNsxtBroker(nsxtConfig *config.NsxtConfig) (NsxtBroker, error) {
-	if nsxtConfig.SimulateInMemory {
-		return NewInMemoryNsxtBroker(nsxtConfig.SimulatedIPPools...), nil
+func setupNsxtBroker(nsxtConfig *config.NsxtConfig, nsxtSim *config.NsxtSimulation) (NsxtBroker, error) {
+	if nsxtSim != nil {
+		return NewInMemoryNsxtBroker(nsxtSim.SimulatedIPPools...), nil
 	}
 
 	retriesConfig := nsxt.ClientRetriesConfiguration{

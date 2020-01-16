@@ -43,7 +43,7 @@ const (
 
 type access struct {
 	broker       NsxtBroker
-	config       *config.Config
+	config       *config.LBConfig
 	ownerTag     common.Tag
 	standardTags []common.Tag
 }
@@ -51,7 +51,7 @@ type access struct {
 var _ Access = &access{}
 
 // NewAccess creates a new Access instance
-func NewAccess(broker NsxtBroker, config *config.Config) (Access, error) {
+func NewAccess(broker NsxtBroker, config *config.LBConfig) (Access, error) {
 	ownerTag := common.Tag{Scope: ScopeOwner, Tag: AppName}
 	standardTags := []common.Tag{ownerTag}
 	for k, v := range config.AdditionalTags {

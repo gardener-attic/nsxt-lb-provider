@@ -28,7 +28,7 @@ type provider struct {
 
 var _ cloudprovider.Interface = &provider{}
 
-func newProvider(config *config.Config) (*provider, error) {
+func newProvider(config *config.LBConfig) (*provider, error) {
 	lbProvider, err := newLBProvider(config)
 	if err != nil {
 		return nil, err

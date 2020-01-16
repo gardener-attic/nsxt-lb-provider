@@ -37,7 +37,7 @@ type loadBalancerClass struct {
 	tags       []common.Tag
 }
 
-func setupClasses(access Access, cfg *config.Config) (*loadBalancerClasses, error) {
+func setupClasses(access Access, cfg *config.LBConfig) (*loadBalancerClasses, error) {
 	max, ok := config.SizeToMaxVirtualServers[cfg.LoadBalancer.Size]
 	if !ok {
 		return nil, fmt.Errorf("invalid load balancer size %s", cfg.LoadBalancer.Size)

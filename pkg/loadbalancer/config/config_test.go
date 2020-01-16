@@ -18,6 +18,7 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -44,6 +45,14 @@ tag2 = value2
 user = admin
 password = secret
 host = nsxt-server
+retry-on-status-codes = 1
+retry-on-status-codes = 2
+retry-on-status-codes = 3
+
+[NSX-T-Simulation]
+simulatedIPPools = a
+simulatedIPPools = b
+simulatedIPPools = c
 `
 	config, err := ReadConfig(strings.NewReader(s1))
 	if err != nil {
@@ -55,6 +64,9 @@ host = nsxt-server
 	}
 	if config.LoadBalancer.LBServiceID != "4711" {
 		t.Errorf("lbServiceId %s != %s", config.LoadBalancer.LBServiceID, "4711")
+	}
+	if config.LoadBalancer.LogicalRouterID != "1234" {
+		t.Errorf("LoadBalancer.logicalRouterId %s != %s", config.LoadBalancer.LogicalRouterID, "1234")
 	}
 	if config.LoadBalancer.Size != "MEDIUM" {
 		t.Errorf("size %s != %s", config.LoadBalancer.Size, "MEDIUM")
@@ -77,13 +89,16 @@ host = nsxt-server
 	if config.NSXT.Host != "nsxt-server" {
 		t.Errorf("NSX-T.host %s != %s", config.NSXT.Host, "nsxt-server")
 	}
-	if config.LoadBalancer.LogicalRouterID != "1234" {
-		t.Errorf("NSX-T.logicalRouterId %s != %s", config.LoadBalancer.LogicalRouterID, "1234")
-	}
 	if config.NSXT.RetryMinDelay != DefaultRetryMinDelay || config.NSXT.RetryMaxDelay != DefaultRetryMaxDelay || config.NSXT.MaxRetries != DefaultMaxRetries {
 		t.Errorf("missing default values for RetryMinDelay/RetryMaxDelay/MaxRetries")
 	}
-	if config.NSXT.RetryOnStatusCodes != nil {
-		t.Errorf("unexpected RetryOnStatusCodes")
+	if fmt.Sprintf("%v", config.NSXT.RetryOnStatusCodes) != "[1 2 3]" {
+		t.Errorf("unexpected RetryOnStatusCodes: %v", config.NSXT.RetryOnStatusCodes)
+	}
+	if config.NSXTSimulation == nil {
+		t.Errorf("NSX-T-Simulation missing")
+	}
+	if fmt.Sprintf("%v", config.NSXTSimulation.SimulatedIPPools) != "[a b c]" {
+		t.Errorf("unexpected SimulatedIPPools: %v", config.NSXTSimulation.SimulatedIPPools)
 	}
 }
