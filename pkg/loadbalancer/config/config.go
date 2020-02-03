@@ -130,8 +130,8 @@ func (cfg *LBConfig) validateConfig() error {
 			return fmt.Errorf(msg)
 		}
 	} else {
-		if cfg.LoadBalancer.IPPoolName == "" && cfg.LoadBalancer.IPPoolID == "" {
-			msg := "load balancer ipPoolName and ipPoolID is empty"
+		if cfg.LoadBalancer.IPPoolName != "" && cfg.LoadBalancer.IPPoolID != "" {
+			msg := "either load balancer ipPoolName or ipPoolID can be set"
 			klog.Errorf(msg)
 			return fmt.Errorf(msg)
 		}
