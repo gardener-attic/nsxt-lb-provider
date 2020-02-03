@@ -19,9 +19,11 @@ package loadbalancer
 
 import (
 	"fmt"
-	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
+
 	"github.com/pkg/errors"
 	"github.com/vmware/go-vmware-nsxt/common"
+
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
 
 type loadBalancerClasses struct {

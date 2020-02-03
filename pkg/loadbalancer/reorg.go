@@ -19,8 +19,9 @@ package loadbalancer
 
 import (
 	"context"
-	"k8s.io/klog"
 	"time"
+
+	"k8s.io/klog"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

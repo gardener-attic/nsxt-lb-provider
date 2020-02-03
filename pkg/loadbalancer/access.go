@@ -19,11 +19,13 @@ package loadbalancer
 
 import (
 	"fmt"
-	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
+	"net/http"
+
 	"github.com/pkg/errors"
 	"github.com/vmware/go-vmware-nsxt/common"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
-	"net/http"
+
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
 
 const (

@@ -18,11 +18,12 @@
 package loadbalancer
 
 import (
+	"net/http"
+	"strings"
+
 	nsxt "github.com/vmware/go-vmware-nsxt"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	"github.com/vmware/go-vmware-nsxt/manager"
-	"net/http"
-	"strings"
 )
 
 // NsxtBroker is an internal interface to enable mocking the nsxt backend

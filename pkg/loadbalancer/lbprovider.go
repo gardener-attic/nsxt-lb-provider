@@ -22,11 +22,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 	"github.com/pkg/errors"
 	nsxt "github.com/vmware/go-vmware-nsxt"
 	corev1 "k8s.io/api/core/v1"
 	cloudprovider "k8s.io/cloud-provider"
+
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
 
 const (

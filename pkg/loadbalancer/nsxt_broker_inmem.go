@@ -19,10 +19,11 @@ package loadbalancer
 
 import (
 	"fmt"
-	"github.com/vmware/go-vmware-nsxt/loadbalancer"
-	"github.com/vmware/go-vmware-nsxt/manager"
 	"net/http"
 	"sync"
+
+	"github.com/vmware/go-vmware-nsxt/loadbalancer"
+	"github.com/vmware/go-vmware-nsxt/manager"
 )
 
 type inmemoryNsxtBroker struct {

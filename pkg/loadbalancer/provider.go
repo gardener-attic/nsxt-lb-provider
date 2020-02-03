@@ -18,8 +18,9 @@
 package loadbalancer
 
 import (
-	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 	cloudprovider "k8s.io/cloud-provider"
+
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
 
 type provider struct {

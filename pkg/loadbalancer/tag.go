@@ -19,6 +19,7 @@ package loadbalancer
 
 import (
 	"fmt"
+
 	"github.com/vmware/go-vmware-nsxt/common"
 )
 

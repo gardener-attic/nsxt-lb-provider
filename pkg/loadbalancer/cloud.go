@@ -20,8 +20,9 @@ package loadbalancer
 import (
 	"io"
 
-	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 	cloudprovider "k8s.io/cloud-provider"
+
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
 
 const (
