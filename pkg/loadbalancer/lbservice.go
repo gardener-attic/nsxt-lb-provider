@@ -23,13 +23,13 @@ import (
 )
 
 type lbService struct {
-	access      Access
+	access      NSXTAccess
 	lbServiceID string
 	managed     bool
 	lbLock      sync.Mutex
 }
 
-func newLbService(access Access, lbServiceID string) *lbService {
+func newLbService(access NSXTAccess, lbServiceID string) *lbService {
 	return &lbService{access: access, lbServiceID: lbServiceID, managed: lbServiceID == ""}
 }
 

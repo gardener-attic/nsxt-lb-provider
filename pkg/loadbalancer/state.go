@@ -22,6 +22,7 @@ import (
 
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 )
@@ -32,7 +33,7 @@ type state struct {
 	*lbService
 	klog.Verbose
 	clusterName string
-	objectName  ObjectName
+	objectName  types.NamespacedName
 	service     *corev1.Service
 	nodes       []*corev1.Node
 	servers     []*loadbalancer.LbVirtualServer

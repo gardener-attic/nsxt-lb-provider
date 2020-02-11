@@ -22,17 +22,19 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
+
 	"github.com/pkg/errors"
 	nsxt "github.com/vmware/go-vmware-nsxt"
-	corev1 "k8s.io/api/core/v1"
-	cloudprovider "k8s.io/cloud-provider"
 
-	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
+	corev1 "k8s.io/api/core/v1"
+	clientset "k8s.io/client-go/kubernetes"
+	cloudprovider "k8s.io/cloud-provider"
 )
 
 const (
-	// AnnotLoadBalancerClass is the optional class annotation at the service
-	AnnotLoadBalancerClass = "loadbalancer.vmware.io/class"
+	// LoadBalancerClassAnnotation is the optional class annotation at the service
+	LoadBalancerClassAnnotation = "loadbalancer.vmware.io/class"
 )
 
 type lbProvider struct {
@@ -47,7 +49,11 @@ var ClusterName string
 
 var _ cloudprovider.LoadBalancer = &lbProvider{}
 
-func newLBProvider(cfg *config.LBConfig) (*lbProvider, error) {
+// NewLBProvider creates a load balancer implementation for the given config
+func NewLBProvider(cfg *config.LBConfig) (LoadBalancer, error) {
+	if !cfg.IsEnabled() {
+		return nil, nil
+	}
 	broker, err := setupNsxtBroker(&cfg.NSXT, cfg.NSXTSimulation)
 	if err != nil {
 		return nil, err
@@ -95,11 +101,7 @@ func setupNsxtBroker(nsxtConfig *config.NsxtConfig, nsxtSim *config.NsxtSimulati
 	return NewNsxtBroker(client), nil
 }
 
-func (p *lbProvider) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
-	client, err := clientBuilder.Client("reorg")
-	if err != nil {
-		panic(err)
-	}
+func (p *lbProvider) Initialize(client clientset.Interface, stop <-chan struct{}) {
 	go p.reorg(client.CoreV1().Services(""), stop)
 }
 
@@ -159,7 +161,7 @@ func (p *lbProvider) classFromService(service *corev1.Service) (*loadBalancerCla
 	if annos == nil {
 		annos = map[string]string{}
 	}
-	name, ok := annos[AnnotLoadBalancerClass]
+	name, ok := annos[LoadBalancerClassAnnotation]
 	name = strings.TrimSpace(name)
 	if !ok || name == "" {
 		name = config.DefaultLoadBalancerClass

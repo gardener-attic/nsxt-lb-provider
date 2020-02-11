@@ -19,15 +19,52 @@ package loadbalancer
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/vmware/go-vmware-nsxt/common"
+	"k8s.io/apimachinery/pkg/types"
 )
+
+// Tags is a map of NSXT-T tags indexed by the tag scope
+type Tags map[string]common.Tag
+
+// ByScope is an array of sags sortable by tag scope
+type ByScope []common.Tag
+
+func (a ByScope) Len() int           { return len(a) }
+func (a ByScope) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByScope) Less(i, j int) bool { return strings.Compare(a[i].Scope, a[j].Scope) < 0 }
+
+// Add adds a tag to the map
+func (m Tags) Add(tags ...common.Tag) Tags {
+	result := Tags{}
+	for n, t := range m {
+		result[n] = t
+	}
+	for _, t := range tags {
+		result[t.Scope] = t
+	}
+	return result
+}
+
+// Normalize returns a tag array sorted by scopes
+func (m Tags) Normalize() []common.Tag {
+	result := make(ByScope, len(m))
+	cnt := 0
+	for _, t := range m {
+		result[cnt] = t
+		cnt++
+	}
+	sort.Sort(result)
+	return result
+}
 
 func clusterTag(clusterName string) common.Tag {
 	return common.Tag{Scope: ScopeCluster, Tag: clusterName}
 }
 
-func serviceTag(objectName ObjectName) common.Tag {
+func serviceTag(objectName types.NamespacedName) common.Tag {
 	return common.Tag{Scope: ScopeService, Tag: objectName.String()}
 }
 

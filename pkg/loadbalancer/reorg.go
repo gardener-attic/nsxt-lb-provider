@@ -21,6 +21,7 @@ import (
 	"context"
 	"time"
 
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/klog"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,6 +31,20 @@ import (
 
 const maxPeriod = 30 * time.Minute
 
+// reorg is used to cleanup obsolete and potentially forgotten objects
+// created by the loadbalancer controller in NSX-T. This should not
+// happen, but if users play with finalizers or some error condition
+// appears in the controller there might be orphaned objects in the
+// infrastructure. This is important for higher level automations like
+// cluster fleet managements that manage the infrastructure of a cluster,
+// because various elements cannot be deleted if they are still in use,
+// after the cluster has been deleted.
+// The controller tags all elements it creates with the cluster name and
+// its identity (the app name of the controller, or a dedicated name chosen
+// by the config file in the tags section). This tagging can then be used
+// to identify all elements originally created by this controller. By
+// comparing this set with the actually required objects it is possible
+// to identify those that are orphaned and safely delete them.
 func (p *lbProvider) reorg(client clientcorev1.ServiceInterface, stop <-chan struct{}) {
 	timer := time.NewTimer(1 * time.Second)
 	lastErrNext := 0 * time.Second
@@ -67,14 +82,14 @@ func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
 		return err
 	}
 
-	services := map[ObjectName]corev1.Service{}
+	services := map[types.NamespacedName]corev1.Service{}
 	for _, item := range list.Items {
 		if item.Spec.Type == corev1.ServiceTypeLoadBalancer {
 			services[objectNameFromService(&item)] = item
 		}
 	}
 
-	lbs := map[ObjectName]struct{}{}
+	lbs := map[types.NamespacedName]struct{}{}
 	servers, err := p.access.ListVirtualServers(ClusterName)
 	if err != nil {
 		return err

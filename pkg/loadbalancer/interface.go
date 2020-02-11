@@ -20,10 +20,21 @@ package loadbalancer
 import (
 	"github.com/vmware/go-vmware-nsxt/common"
 	"github.com/vmware/go-vmware-nsxt/loadbalancer"
+	"k8s.io/apimachinery/pkg/types"
+	clientset "k8s.io/client-go/kubernetes"
+	cloudprovider "k8s.io/cloud-provider"
 )
 
-// Access provides methods for dealing with NSX-T objects
-type Access interface {
+// LoadBalancer is the interface used call the load balancer functionality
+// It extends the cloud controller manager LoadBalancer interface by an
+// initialization function
+type LoadBalancer interface {
+	cloudprovider.LoadBalancer
+	Initialize(client clientset.Interface, stop <-chan struct{})
+}
+
+// NSXTAccess provides methods for dealing with NSX-T objects
+type NSXTAccess interface {
 	// CreateLoadBalancerService creates a LbService
 	CreateLoadBalancerService(clusterName string) (*loadbalancer.LbService, error)
 	// FindLoadBalancerService finds a LbService by cluster name and LB service id
@@ -36,9 +47,9 @@ type Access interface {
 	DeleteLoadBalancerService(id string) error
 
 	// CreateVirtualServer creates a virtual server
-	CreateVirtualServer(clusterName string, objectName ObjectName, tags TagSource, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error)
+	CreateVirtualServer(clusterName string, objectName types.NamespacedName, tags TagSource, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error)
 	// FindVirtualServers finds a virtual server by cluster and object name
-	FindVirtualServers(clusterName string, objectName ObjectName) ([]*loadbalancer.LbVirtualServer, error)
+	FindVirtualServers(clusterName string, objectName types.NamespacedName) ([]*loadbalancer.LbVirtualServer, error)
 	// ListVirtualServers finds all virtual servers for a cluster
 	ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtualServer, error)
 	// UpdateVirtualServer updates a virtual server
@@ -47,13 +58,13 @@ type Access interface {
 	DeleteVirtualServer(id string) error
 
 	// CreatePool creates a LbPool
-	CreatePool(clusterName string, objectName ObjectName, mapping Mapping, members []loadbalancer.PoolMember, activeMonitorIDs []string) (*loadbalancer.LbPool, error)
+	CreatePool(clusterName string, objectName types.NamespacedName, mapping Mapping, members []loadbalancer.PoolMember, activeMonitorIDs []string) (*loadbalancer.LbPool, error)
 	// GetPool gets a LbPool by id
 	GetPool(id string) (*loadbalancer.LbPool, error)
 	// FindPool finds a LbPool for a mapping
-	FindPool(clusterName string, objectName ObjectName, mapping Mapping) (*loadbalancer.LbPool, error)
+	FindPool(clusterName string, objectName types.NamespacedName, mapping Mapping) (*loadbalancer.LbPool, error)
 	// FindPools finds a LbPool by cluster and object name
-	FindPools(clusterName string, objectName ObjectName) ([]*loadbalancer.LbPool, error)
+	FindPools(clusterName string, objectName types.NamespacedName) ([]*loadbalancer.LbPool, error)
 	// ListPools lists all LbPool for a cluster
 	ListPools(clusterName string) ([]*loadbalancer.LbPool, error)
 	// UpdatePool updates a LbPool
@@ -72,9 +83,9 @@ type Access interface {
 	ReleaseExternalIPAddress(ipPoolID string, address string) error
 
 	// CreateTCPMonitor creates a LbTcpMonitor
-	CreateTCPMonitor(clusterName string, objectName ObjectName, mapping Mapping) (*loadbalancer.LbTcpMonitor, error)
+	CreateTCPMonitor(clusterName string, objectName types.NamespacedName, mapping Mapping) (*loadbalancer.LbTcpMonitor, error)
 	// FindTCPMonitors finds a LbTcpMonitor by cluster and object name
-	FindTCPMonitors(clusterName string, objectName ObjectName) ([]*loadbalancer.LbTcpMonitor, error)
+	FindTCPMonitors(clusterName string, objectName types.NamespacedName) ([]*loadbalancer.LbTcpMonitor, error)
 	// ListTCPMonitorLight list LbMonitors
 	ListTCPMonitorLight(clusterName string) ([]*loadbalancer.LbMonitor, error)
 	// UpdateTCPMonitor updates a LbTcpMonitor

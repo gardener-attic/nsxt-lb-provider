@@ -21,27 +21,16 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-// ObjectName is a namespace/name pair
-type ObjectName struct {
-	// Namespace is the namespace
-	Namespace string
-	// Name is the name
-	Name string
+func objectNameFromService(service *corev1.Service) types.NamespacedName {
+	return types.NamespacedName{Namespace: service.Namespace, Name: service.Name}
 }
 
-func objectNameFromService(service *corev1.Service) ObjectName {
-	return ObjectName{Namespace: service.Namespace, Name: service.Name}
-}
-
-func (o ObjectName) String() string {
-	return o.Namespace + "/" + o.Name
-}
-
-func parseObjectName(name string) ObjectName {
+func parseObjectName(name string) types.NamespacedName {
 	parts := strings.Split(name, "/")
-	return ObjectName{Namespace: parts[0], Name: parts[1]}
+	return types.NamespacedName{Namespace: parts[0], Name: parts[1]}
 }
 
 func stringsEquals(a []string, b []string) bool {

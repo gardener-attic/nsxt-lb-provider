@@ -20,16 +20,15 @@ package loadbalancer
 import (
 	"fmt"
 
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
+
 	"github.com/pkg/errors"
 	"github.com/vmware/go-vmware-nsxt/common"
-
-	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
 
 type loadBalancerClasses struct {
-	size              string
-	maxVirtualServers int
-	classes           map[string]*loadBalancerClass
+	size    string
+	classes map[string]*loadBalancerClass
 }
 
 type loadBalancerClass struct {
@@ -39,16 +38,14 @@ type loadBalancerClass struct {
 	tags       []common.Tag
 }
 
-func setupClasses(access Access, cfg *config.LBConfig) (*loadBalancerClasses, error) {
-	max, ok := config.SizeToMaxVirtualServers[cfg.LoadBalancer.Size]
-	if !ok {
+func setupClasses(access NSXTAccess, cfg *config.LBConfig) (*loadBalancerClasses, error) {
+	if !config.LoadBalancerSizes.Has(cfg.LoadBalancer.Size) {
 		return nil, fmt.Errorf("invalid load balancer size %s", cfg.LoadBalancer.Size)
 	}
 
 	lbClasses := &loadBalancerClasses{
-		size:              cfg.LoadBalancer.Size,
-		maxVirtualServers: max,
-		classes:           map[string]*loadBalancerClass{},
+		size:    cfg.LoadBalancer.Size,
+		classes: map[string]*loadBalancerClass{},
 	}
 
 	defaultConfig := &config.LoadBalancerClassConfig{
@@ -83,7 +80,7 @@ func (c *loadBalancerClasses) GetClass(name string) *loadBalancerClass {
 	return c.classes[name]
 }
 
-func (c *loadBalancerClasses) add(access Access, name string, classConfig *config.LoadBalancerClassConfig, defaultConfig *config.LoadBalancerClassConfig) error {
+func (c *loadBalancerClasses) add(access NSXTAccess, name string, classConfig *config.LoadBalancerClassConfig, defaultConfig *config.LoadBalancerClassConfig) error {
 	var err error
 	ipPoolName := classConfig.IPPoolName
 	ipPoolID := classConfig.IPPoolID

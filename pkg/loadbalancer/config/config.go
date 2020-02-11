@@ -24,36 +24,34 @@ import (
 	"strconv"
 
 	"gopkg.in/gcfg.v1"
+
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 )
 
 const (
-	// SizeSmall is the NSX-T load balancer size small (10 virtual servers)
+	// SizeSmall is the NSX-T load balancer size small
 	SizeSmall = "SMALL"
-	// SizeMedium is the NSX-T load balancer size medium (100 virtual servers)
+	// SizeMedium is the NSX-T load balancer size medium
 	SizeMedium = "MEDIUM"
-	// SizeLarge is the NSX-T load balancer size large (1000 virtual servers)
+	// SizeLarge is the NSX-T load balancer size large
 	SizeLarge = "LARGE"
 
 	// DefaultMaxRetries is the default value for max retries
 	DefaultMaxRetries = 30
-	// DefaultRetryMinDelay is teh default value for minimum retry delay
+	// DefaultRetryMinDelay is the default value for minimum retry delay
 	DefaultRetryMinDelay = 500
-	// DefaultRetryMaxDelay is teh default value for maximum retry delay
+	// DefaultRetryMaxDelay is the default value for maximum retry delay
 	DefaultRetryMaxDelay = 5000
 
 	// DefaultLoadBalancerClass is the default load balancer class
 	DefaultLoadBalancerClass = "default"
 )
 
-// SizeToMaxVirtualServers contains the mapping from size to maximum number of virtual servers
-var SizeToMaxVirtualServers = map[string]int{
-	SizeSmall:  20,
-	SizeMedium: 100,
-	SizeLarge:  1000,
-}
+// LoadBalancerSizes contains the valid size names
+var LoadBalancerSizes = sets.NewString(SizeSmall, SizeMedium, SizeLarge)
 
-// LBConfig  is used to read and store information from the cloud configuration file
+// LBConfig is used to read and store information from the cloud configuration file
 type LBConfig struct {
 	LoadBalancer        LoadBalancerConfig                  `gcfg:"LoadBalancer"`
 	LoadBalancerClasses map[string]*LoadBalancerClassConfig `gcfg:"LoadBalancerClass"`
@@ -85,7 +83,7 @@ type NsxtConfig struct {
 	Password string `gcfg:"password"`
 	// NSX-T host.
 	Host string `gcfg:"host"`
-	// True if vCenter uses self-signed cert.
+	// True if NSX-T uses self-signed cert.
 	InsecureFlag       bool   `gcfg:"insecure-flag"`
 	RemoteAuth         bool   `gcfg:"remote-auth"`
 	MaxRetries         int    `gcfg:"max-retries"`
@@ -97,12 +95,13 @@ type NsxtConfig struct {
 	CAFile             string `gcfg:"ca-file"`
 }
 
-// NsxtSimulation contains simulation configuration
+// NsxtSimulation is a helper configuration to pass fake data for testing purposes
 type NsxtSimulation struct {
 	SimulatedIPPools []string `gcfg:"simulatedIPPools"`
 }
 
-// IsEnabled returns false if no load balancer configuration is set
+// IsEnabled checks whether the load balancer feature is enabled
+// It is enabled if any flavor of the load balancer configuration is given.
 func (cfg *LBConfig) IsEnabled() bool {
 	return len(cfg.LoadBalancerClasses) > 0 || !cfg.LoadBalancer.IsEmpty()
 }
@@ -113,7 +112,7 @@ func (cfg *LBConfig) validateConfig() error {
 		klog.Errorf(msg)
 		return fmt.Errorf(msg)
 	}
-	if _, ok := SizeToMaxVirtualServers[cfg.LoadBalancer.Size]; !ok {
+	if !LoadBalancerSizes.Has(cfg.LoadBalancer.Size) {
 		msg := "load balancer size is invalid"
 		klog.Errorf(msg)
 		return fmt.Errorf(msg)
@@ -142,7 +141,7 @@ func (cfg *LBConfig) validateConfig() error {
 	return nil
 }
 
-// IsEmpty returns true if no configuration is set
+// IsEmpty checks whether the load balancer config is empty (no values specified)
 func (cfg *LoadBalancerConfig) IsEmpty() bool {
 	return cfg.Size == "" && cfg.LBServiceID == "" &&
 		cfg.IPPoolID == "" && cfg.IPPoolName == "" &&
@@ -240,7 +239,7 @@ func (cfg *NsxtConfig) FromEnv() error {
 	return nil
 }
 
-// ReadConfig parses vSphere cloud config file and stores it into VSphereConfig.
+// ReadConfig parses vSphere cloud config file and stores it into LBConfif.
 // Environment variables are also checked
 func ReadConfig(config io.Reader) (*LBConfig, error) {
 	if config == nil {
@@ -262,37 +261,33 @@ func ReadConfig(config io.Reader) (*LBConfig, error) {
 
 // CompleteAndValidate sets default values, overrides by env and validates the resulting config
 func (cfg *LBConfig) CompleteAndValidate() error {
-	if cfg.IsEnabled() {
-		if cfg.NSXT.MaxRetries == 0 {
-			cfg.NSXT.MaxRetries = DefaultMaxRetries
-		}
-		if cfg.NSXT.RetryMinDelay == 0 {
-			cfg.NSXT.RetryMinDelay = DefaultRetryMinDelay
-		}
-		if cfg.NSXT.RetryMaxDelay == 0 {
-			cfg.NSXT.RetryMaxDelay = DefaultRetryMaxDelay
-		}
-		if cfg.LoadBalancerClasses == nil {
-			cfg.LoadBalancerClasses = map[string]*LoadBalancerClassConfig{}
-		}
-		for _, class := range cfg.LoadBalancerClasses {
-			if class.IPPoolName == "" {
-				if class.IPPoolID == "" {
-					class.IPPoolID = cfg.LoadBalancer.IPPoolID
-					class.IPPoolName = cfg.LoadBalancer.IPPoolName
-				}
-			}
-		}
+	if !cfg.IsEnabled() {
+		return nil
+	}
 
-		// Env Vars should override config file entries if present
-		if err := cfg.NSXT.FromEnv(); err != nil {
-			return err
-		}
-
-		if err := cfg.validateConfig(); err != nil {
-			return err
+	if cfg.NSXT.MaxRetries == 0 {
+		cfg.NSXT.MaxRetries = DefaultMaxRetries
+	}
+	if cfg.NSXT.RetryMinDelay == 0 {
+		cfg.NSXT.RetryMinDelay = DefaultRetryMinDelay
+	}
+	if cfg.NSXT.RetryMaxDelay == 0 {
+		cfg.NSXT.RetryMaxDelay = DefaultRetryMaxDelay
+	}
+	if cfg.LoadBalancerClasses == nil {
+		cfg.LoadBalancerClasses = map[string]*LoadBalancerClassConfig{}
+	}
+	for _, class := range cfg.LoadBalancerClasses {
+		if class.IPPoolName == "" && class.IPPoolID == "" {
+			class.IPPoolID = cfg.LoadBalancer.IPPoolID
+			class.IPPoolName = cfg.LoadBalancer.IPPoolName
 		}
 	}
 
-	return nil
+	// Env Vars should override config file entries if present
+	if err := cfg.NSXT.FromEnv(); err != nil {
+		return err
+	}
+
+	return cfg.validateConfig()
 }
