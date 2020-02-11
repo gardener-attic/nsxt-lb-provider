@@ -7,6 +7,8 @@ github.com/NYTimes/gziphandler
 github.com/PuerkitoBio/purell
 # github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578
 github.com/PuerkitoBio/urlesc
+# github.com/beevik/etree v1.1.0
+github.com/beevik/etree
 # github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973
 github.com/beorn7/perks/quantile
 # github.com/blang/semver v3.5.0+incompatible
@@ -47,6 +49,8 @@ github.com/emicklei/go-restful
 github.com/emicklei/go-restful/log
 # github.com/evanphx/json-patch v4.2.0+incompatible
 github.com/evanphx/json-patch
+# github.com/gibson042/canonicaljson-go v1.0.3
+github.com/gibson042/canonicaljson-go
 # github.com/go-openapi/jsonpointer v0.19.2
 github.com/go-openapi/jsonpointer
 # github.com/go-openapi/jsonreference v0.19.2
@@ -83,6 +87,8 @@ github.com/google/uuid
 github.com/googleapis/gnostic/OpenAPIv2
 github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
+# github.com/gorilla/mux v1.7.3
+github.com/gorilla/mux
 # github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 github.com/grpc-ecosystem/go-grpc-prometheus
 # github.com/hashicorp/golang-lru v0.5.1
@@ -176,24 +182,34 @@ github.com/sirupsen/logrus
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
-# github.com/vmware/go-vmware-nsxt v0.0.0-20200114231430-33a5af043f2e
-github.com/vmware/go-vmware-nsxt
-github.com/vmware/go-vmware-nsxt/aaa
-github.com/vmware/go-vmware-nsxt/administration
-github.com/vmware/go-vmware-nsxt/aggregation
-github.com/vmware/go-vmware-nsxt/apiservice
-github.com/vmware/go-vmware-nsxt/appdiscovery
-github.com/vmware/go-vmware-nsxt/association
-github.com/vmware/go-vmware-nsxt/common
-github.com/vmware/go-vmware-nsxt/errorresolver
-github.com/vmware/go-vmware-nsxt/licensing
-github.com/vmware/go-vmware-nsxt/loadbalancer
-github.com/vmware/go-vmware-nsxt/manager
-github.com/vmware/go-vmware-nsxt/monitoring
-github.com/vmware/go-vmware-nsxt/normalization
-github.com/vmware/go-vmware-nsxt/policy
-github.com/vmware/go-vmware-nsxt/trust
-github.com/vmware/go-vmware-nsxt/upgrade
+# github.com/vmware/vsphere-automation-sdk-go/lib v0.1.1
+github.com/vmware/vsphere-automation-sdk-go/lib/vapi/std
+github.com/vmware/vsphere-automation-sdk-go/lib/vapi/std/errors
+# github.com/vmware/vsphere-automation-sdk-go/runtime v0.1.1
+github.com/vmware/vsphere-automation-sdk-go/runtime
+github.com/vmware/vsphere-automation-sdk-go/runtime/bindings
+github.com/vmware/vsphere-automation-sdk-go/runtime/common
+github.com/vmware/vsphere-automation-sdk-go/runtime/core
+github.com/vmware/vsphere-automation-sdk-go/runtime/data
+github.com/vmware/vsphere-automation-sdk-go/runtime/data/serializers/cleanjson
+github.com/vmware/vsphere-automation-sdk-go/runtime/data/serializers/rest
+github.com/vmware/vsphere-automation-sdk-go/runtime/l10n
+github.com/vmware/vsphere-automation-sdk-go/runtime/l10n/runtime
+github.com/vmware/vsphere-automation-sdk-go/runtime/lib
+github.com/vmware/vsphere-automation-sdk-go/runtime/lib/rest
+github.com/vmware/vsphere-automation-sdk-go/runtime/log
+github.com/vmware/vsphere-automation-sdk-go/runtime/metadata
+github.com/vmware/vsphere-automation-sdk-go/runtime/metadata/info
+github.com/vmware/vsphere-automation-sdk-go/runtime/protocol
+github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/client
+github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/server
+github.com/vmware/vsphere-automation-sdk-go/runtime/protocol/server/rpc/msg
+github.com/vmware/vsphere-automation-sdk-go/runtime/security
+# github.com/vmware/vsphere-automation-sdk-go/services/nsxt v0.1.1
+github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra
+github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/ip_pools
+github.com/vmware/vsphere-automation-sdk-go/services/nsxt/infra/realized_state
+github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model
 # go.uber.org/atomic v0.0.0-20181018215023-8dc6146f7569
 go.uber.org/atomic
 # go.uber.org/multierr v0.0.0-20180122172545-ddea229ff1df
@@ -219,7 +235,7 @@ golang.org/x/crypto/ssh/terminal
 # golang.org/x/lint v0.0.0-20190409202823-959b441ac422
 golang.org/x/lint
 golang.org/x/lint/golint
-# golang.org/x/net v0.0.0-20190812203447-cdfb69ac37fc
+# golang.org/x/net v0.0.0-20200114155413-6afb5195e5aa
 golang.org/x/net/context
 golang.org/x/net/context/ctxhttp
 golang.org/x/net/html
@@ -250,11 +266,19 @@ golang.org/x/text/encoding/korean
 golang.org/x/text/encoding/simplifiedchinese
 golang.org/x/text/encoding/traditionalchinese
 golang.org/x/text/encoding/unicode
+golang.org/x/text/feature/plural
+golang.org/x/text/internal
+golang.org/x/text/internal/catmsg
+golang.org/x/text/internal/format
 golang.org/x/text/internal/language
 golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/number
+golang.org/x/text/internal/stringset
 golang.org/x/text/internal/tag
 golang.org/x/text/internal/utf8internal
 golang.org/x/text/language
+golang.org/x/text/message
+golang.org/x/text/message/catalog
 golang.org/x/text/runes
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform

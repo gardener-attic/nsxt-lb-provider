@@ -23,69 +23,61 @@ import (
 )
 
 type lbService struct {
-	access      Access
+	access      NSXTAccess
 	lbServiceID string
 	managed     bool
 	lbLock      sync.Mutex
 }
 
-func newLbService(access Access, lbServiceID string) *lbService {
+func newLbService(access NSXTAccess, lbServiceID string) *lbService {
 	return &lbService{access: access, lbServiceID: lbServiceID, managed: lbServiceID == ""}
 }
 
-func (s *lbService) addVirtualServerToLoadBalancerService(clusterName, serverID string) error {
+func (s *lbService) getOrCreateLoadBalancerService(clusterName string) (string, error) {
 	s.lbLock.Lock()
 	defer s.lbLock.Unlock()
+
+	lbService, err := s.access.FindLoadBalancerService(clusterName, s.lbServiceID)
+	if err != nil {
+		return "", err
+	}
+	if lbService != nil {
+		return *lbService.Path, nil
+	}
+	if s.managed {
+		lbService, err = s.access.CreateLoadBalancerService(clusterName)
+		if err != nil {
+			return "", err
+		}
+		s.lbServiceID = *lbService.Id
+		return *lbService.Path, nil
+	}
+	return "", fmt.Errorf("no load balancer service found with id %s", s.lbServiceID)
+}
+
+func (s *lbService) removeLoadBalancerServiceIfUnused(clusterName string) error {
+	s.lbLock.Lock()
+	defer s.lbLock.Unlock()
+
+	if !s.managed {
+		return nil
+	}
 
 	lbService, err := s.access.FindLoadBalancerService(clusterName, s.lbServiceID)
 	if err != nil {
 		return err
 	}
 	if lbService == nil {
-		if s.managed {
-			lbService, err = s.access.CreateLoadBalancerService(clusterName)
-			if err != nil {
-				return err
-			}
-			s.lbServiceID = lbService.Id
-		} else {
-			return fmt.Errorf("no more virtual servers for load balancer service")
-		}
+		return nil
 	}
-	lbService.VirtualServerIds = append(lbService.VirtualServerIds, serverID)
-	err = s.access.UpdateLoadBalancerService(lbService)
+	virtualServers, err := s.access.ListVirtualServers(clusterName)
 	if err != nil {
 		return err
 	}
-
-	return nil
-}
-
-func (s *lbService) removeVirtualServerFromLoadBalancerService(clusterName, serverID string) error {
-	s.lbLock.Lock()
-	defer s.lbLock.Unlock()
-
-	lbService, err := s.access.FindLoadBalancerServiceForVirtualServer(clusterName, serverID)
-	if err != nil {
-		return err
-	}
-	if lbService != nil {
-		for i, id := range lbService.VirtualServerIds {
-			if id == serverID {
-				lbService.VirtualServerIds = append(lbService.VirtualServerIds[:i], lbService.VirtualServerIds[i+1:]...)
-				break
-			}
-		}
-		if s.managed && len(lbService.VirtualServerIds) == 0 {
-			err := s.access.DeleteLoadBalancerService(lbService.Id)
-			if err != nil {
-				return err
-			}
-		} else {
-			err := s.access.UpdateLoadBalancerService(lbService)
-			if err != nil {
-				return err
-			}
+	if len(virtualServers) == 0 {
+		err := s.access.DeleteLoadBalancerService(*lbService.Id)
+		if err != nil {
+			return err
 		}
 	}
 	return nil

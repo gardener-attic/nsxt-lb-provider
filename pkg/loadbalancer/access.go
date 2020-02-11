@@ -19,11 +19,12 @@ package loadbalancer
 
 import (
 	"fmt"
-	"net/http"
+	"time"
 
 	"github.com/pkg/errors"
-	"github.com/vmware/go-vmware-nsxt/common"
-	"github.com/vmware/go-vmware-nsxt/loadbalancer"
+	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
@@ -46,50 +47,49 @@ const (
 type access struct {
 	broker       NsxtBroker
 	config       *config.LBConfig
-	ownerTag     common.Tag
-	standardTags []common.Tag
+	ownerTag     model.Tag
+	standardTags Tags
 }
 
-var _ Access = &access{}
+var _ NSXTAccess = &access{}
 
-// NewAccess creates a new Access instance
-func NewAccess(broker NsxtBroker, config *config.LBConfig) (Access, error) {
-	ownerTag := common.Tag{Scope: ScopeOwner, Tag: AppName}
-	standardTags := []common.Tag{ownerTag}
+// NewNSXTAccess creates a new NSXTAccess instance
+func NewNSXTAccess(broker NsxtBroker, config *config.LBConfig) (NSXTAccess, error) {
+	standardTags := Tags{
+		ScopeOwner: model.Tag{Scope: strptr(ScopeOwner), Tag: strptr(AppName)},
+	}
 	for k, v := range config.AdditionalTags {
-		standardTags = append(standardTags, common.Tag{Scope: k, Tag: v})
+		standardTags[k] = model.Tag{Scope: strptr(k), Tag: strptr(v)}
 	}
 	return &access{
 		broker:       broker,
 		config:       config,
-		ownerTag:     ownerTag,
+		ownerTag:     standardTags[ScopeOwner],
 		standardTags: standardTags,
 	}, nil
 }
 
 func (a *access) FindIPPoolByName(poolName string) (string, error) {
-	objList, err := a.broker.ListIPPools()
+	list, err := a.broker.ListIPPools()
 	if err != nil {
 		return "", errors.Wrap(err, "listing IP pools failed")
 	}
-	for _, item := range objList.Results {
-		if item.DisplayName == poolName {
-			return item.Id, nil
+	for _, item := range list {
+		if item.DisplayName != nil && *item.DisplayName == poolName {
+			return *item.Id, nil
 		}
 	}
 	return "", fmt.Errorf("load balancer IP pool named %s not found", poolName)
 }
 
-func (a *access) CreateLoadBalancerService(clusterName string) (*loadbalancer.LbService, error) {
-	lbService := loadbalancer.LbService{
-		Description: fmt.Sprintf("virtual server pool for cluster %s created by %s", clusterName, AppName),
-		DisplayName: fmt.Sprintf("cluster:%s", clusterName),
-		Tags:        append(a.standardTags, clusterTag(clusterName)),
-		Size:        a.config.LoadBalancer.Size,
-		Enabled:     true,
-		Attachment: &common.ResourceReference{
-			TargetId: a.config.LoadBalancer.LogicalRouterID,
-		},
+func (a *access) CreateLoadBalancerService(clusterName string) (*model.LBService, error) {
+	lbService := model.LBService{
+		Description:      strptr(fmt.Sprintf("virtual server pool for cluster %s created by %s", clusterName, AppName)),
+		DisplayName:      strptr(fmt.Sprintf("cluster:%s", clusterName)),
+		Tags:             a.standardTags.Clone(clusterTag(clusterName)).Normalize(),
+		Size:             strptr(a.config.LoadBalancer.Size),
+		Enabled:          boolptr(true),
+		ConnectivityPath: strptr(a.config.LoadBalancer.Tier1GatewayPath),
 	}
 	result, err := a.broker.CreateLoadBalancerService(lbService)
 	if err != nil {
@@ -98,75 +98,55 @@ func (a *access) CreateLoadBalancerService(clusterName string) (*loadbalancer.Lb
 	return &result, nil
 }
 
-func (a *access) FindLoadBalancerService(clusterName string, id string) (*loadbalancer.LbService, error) {
+func (a *access) FindLoadBalancerService(clusterName string, id string) (*model.LBService, error) {
 	if id != "" {
 		result, err := a.broker.ReadLoadBalancerService(id)
 		if err != nil {
 			return nil, err
 		}
-		if a.config.LoadBalancer.LogicalRouterID != "" && (result.Attachment == nil || result.Attachment.TargetId != a.config.LoadBalancer.LogicalRouterID) {
-			targetID := "nil"
-			if result.Attachment != nil {
-				targetID = result.Attachment.TargetId
+		if a.config.LoadBalancer.Tier1GatewayPath != "" && (result.ConnectivityPath == nil || *result.ConnectivityPath != a.config.LoadBalancer.Tier1GatewayPath) {
+			connectivityPath := "nil"
+			if result.ConnectivityPath != nil {
+				connectivityPath = *result.ConnectivityPath
 			}
 			return nil, fmt.Errorf("load balancer service %q is configured for router %q not %q",
-				result.Id,
-				targetID,
-				a.config.LoadBalancer.LogicalRouterID,
+				*result.Id,
+				connectivityPath,
+				a.config.LoadBalancer.Tier1GatewayPath,
 			)
 		}
 		return &result, nil
 	}
-	return a.findLoadBalancerService(clusterName, func(item *loadbalancer.LbService) bool {
-		free := config.SizeToMaxVirtualServers[item.Size] - len(item.VirtualServerIds)
-		return free > 0
-	})
+	return a.findLoadBalancerService(a.ownerTag, clusterTag(clusterName))
 }
 
-type selector func(*loadbalancer.LbService) bool
-
-func (a *access) findLoadBalancerService(clusterName string, f selector) (*loadbalancer.LbService, error) {
+func (a *access) findLoadBalancerService(tags ...model.Tag) (*model.LBService, error) {
 	list, err := a.broker.ListLoadBalancerServices()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing load balancer services failed")
 	}
-	for _, item := range list.Results {
-		if a.config.LoadBalancer.LogicalRouterID != "" && item.Attachment != nil && item.Attachment.TargetId == a.config.LoadBalancer.LogicalRouterID {
-			if f(&item) {
-				return &item, nil
-			}
+	for _, item := range list {
+		if a.config.LoadBalancer.Tier1GatewayPath != "" && item.ConnectivityPath != nil && *item.ConnectivityPath == a.config.LoadBalancer.Tier1GatewayPath {
+			return &item, nil
 		}
-		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName)) {
-			if f(&item) {
-				return &item, nil
-			}
+		if checkTags(item.Tags, tags...) {
+			return &item, nil
 		}
 	}
 	return nil, nil
 }
 
-func (a *access) FindLoadBalancerServiceForVirtualServer(clusterName string, serverID string) (lbService *loadbalancer.LbService, err error) {
-	return a.findLoadBalancerService(clusterName, func(item *loadbalancer.LbService) bool {
-		for _, id := range item.VirtualServerIds {
-			if id == serverID {
-				return true
-			}
-		}
-		return false
-	})
-}
-
-func (a *access) UpdateLoadBalancerService(lbService *loadbalancer.LbService) error {
+func (a *access) UpdateLoadBalancerService(lbService *model.LBService) error {
 	_, err := a.broker.UpdateLoadBalancerService(*lbService)
 	if err != nil {
-		return errors.Wrapf(err, "updating load balancer service %s (%s) failed", lbService.DisplayName, lbService.Id)
+		return errors.Wrapf(err, "updating load balancer service %s (%s) failed", *lbService.DisplayName, *lbService.Id)
 	}
 	return nil
 }
 
 func (a *access) DeleteLoadBalancerService(id string) error {
-	statusCode, err := a.broker.DeleteLoadBalancerService(id)
-	if statusCode == http.StatusNotFound {
+	err := a.broker.DeleteLoadBalancerService(id)
+	if isNotFoundError(err) {
 		return nil
 	}
 	if err != nil {
@@ -175,18 +155,66 @@ func (a *access) DeleteLoadBalancerService(id string) error {
 	return nil
 }
 
-func (a *access) CreateVirtualServer(clusterName string, objectName ObjectName, tags TagSource, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error) {
-	virtualServer := loadbalancer.LbVirtualServer{
-		Description: fmt.Sprintf("virtual server for cluster %s, service %s created by %s",
-			clusterName, objectName, AppName),
-		DisplayName:           fmt.Sprintf("cluster:%s:%s", clusterName, objectName),
-		Tags:                  append(append(a.standardTags, clusterTag(clusterName), serviceTag(objectName)), tags.Tags()...),
-		DefaultPoolMemberPort: fmt.Sprintf("%d", mapping.NodePort),
-		Enabled:               true,
-		IpAddress:             ipAddress,
-		IpProtocol:            string(mapping.Protocol),
-		PoolId:                poolID,
-		Port:                  fmt.Sprintf("%d", mapping.SourcePort),
+func (a *access) findAppProfilePathByName(profileName string, resourceType string) (string, error) {
+	list, err := a.broker.ListAppProfiles()
+	if err != nil {
+		return "", err
+	}
+	for _, item := range list {
+		itemResourceType, err := item.String("resource_type")
+		if err != nil {
+			return "", errors.Wrapf(err, "findAppProfilePathByName cannot find field resource_type")
+		}
+		itemName, err := item.String("display_name")
+		if err != nil {
+			return "", errors.Wrapf(err, "findAppProfilePathByName cannot find field name")
+		}
+		if itemResourceType == resourceType && itemName == profileName {
+			path, err := item.String("path")
+			if err != nil {
+				return "", errors.Wrapf(err, "findAppProfilePathByName cannot find field path")
+			}
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("application profile named %s of type %s not found", profileName, resourceType)
+}
+
+func (a *access) getAppProfilePath(protocol corev1.Protocol) (string, error) {
+	switch protocol {
+	case corev1.ProtocolTCP:
+		if a.config.LoadBalancer.TCPAppProfilePath != "" {
+			return a.config.LoadBalancer.TCPAppProfilePath, nil
+		}
+		return a.findAppProfilePathByName(a.config.LoadBalancer.TCPAppProfileName, model.LBAppProfile_RESOURCE_TYPE_LBFASTTCPPROFILE)
+	case corev1.ProtocolUDP:
+		if a.config.LoadBalancer.UDPAppProfilePath != "" {
+			return a.config.LoadBalancer.UDPAppProfilePath, nil
+		}
+		return a.findAppProfilePathByName(a.config.LoadBalancer.UDPAppProfileName, model.LBAppProfile_RESOURCE_TYPE_LBFASTUDPPROFILE)
+	default:
+		return "", fmt.Errorf("Unsupported protocol %s", protocol)
+	}
+}
+
+func (a *access) CreateVirtualServer(clusterName string, objectName types.NamespacedName, tags TagSource, ipAddress string, mapping Mapping, lbServicePath string, poolPath *string) (*model.LBVirtualServer, error) {
+	applicationProfilePath, err := a.getAppProfilePath(mapping.Protocol)
+	if err != nil {
+		return nil, fmt.Errorf("Lookup of application profile failed for %s: %s", mapping.Protocol, err)
+	}
+	allTags := append(tags.Tags(), clusterTag(clusterName), serviceTag(objectName), portTag(mapping))
+	virtualServer := model.LBVirtualServer{
+		Description: strptr(fmt.Sprintf("virtual server for cluster %s, service %s created by %s",
+			clusterName, objectName, AppName)),
+		DisplayName:            strptr(fmt.Sprintf("cluster:%s:%s", clusterName, objectName)),
+		Tags:                   a.standardTags.Clone(allTags...).Normalize(),
+		DefaultPoolMemberPorts: []string{fmt.Sprintf("%d", mapping.NodePort)},
+		Enabled:                boolptr(true),
+		IpAddress:              ipAddress,
+		ApplicationProfilePath: applicationProfilePath,
+		PoolPath:               poolPath,
+		Ports:                  []string{fmt.Sprintf("%d", mapping.SourcePort)},
+		LbServicePath:          strptr(lbServicePath),
 	}
 	result, err := a.broker.CreateLoadBalancerVirtualServer(virtualServer)
 	if err != nil {
@@ -195,40 +223,40 @@ func (a *access) CreateVirtualServer(clusterName string, objectName ObjectName, 
 	return &result, nil
 }
 
-func (a *access) FindVirtualServers(clusterName string, objectName ObjectName) ([]*loadbalancer.LbVirtualServer, error) {
+func (a *access) FindVirtualServers(clusterName string, objectName types.NamespacedName) ([]*model.LBVirtualServer, error) {
 	return a.listVirtualServers(a.ownerTag, clusterTag(clusterName), serviceTag(objectName))
 }
 
-func (a *access) ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtualServer, error) {
+func (a *access) ListVirtualServers(clusterName string) ([]*model.LBVirtualServer, error) {
 	return a.listVirtualServers(a.ownerTag, clusterTag(clusterName))
 }
 
-func (a *access) listVirtualServers(tags ...common.Tag) ([]*loadbalancer.LbVirtualServer, error) {
+func (a *access) listVirtualServers(tags ...model.Tag) ([]*model.LBVirtualServer, error) {
 	list, err := a.broker.ListLoadBalancerVirtualServers()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing virtual servers failed")
 	}
-	var result []*loadbalancer.LbVirtualServer
-	for _, item := range list.Results {
+	var result []*model.LBVirtualServer
+	for _, item := range list {
 		if checkTags(item.Tags, tags...) {
-			copy := item
-			result = append(result, &copy)
+			itemCopy := item
+			result = append(result, &itemCopy)
 		}
 	}
 	return result, nil
 }
 
-func (a *access) UpdateVirtualServer(server *loadbalancer.LbVirtualServer) error {
+func (a *access) UpdateVirtualServer(server *model.LBVirtualServer) error {
 	_, err := a.broker.UpdateLoadBalancerVirtualServer(*server)
 	if err != nil {
-		return errors.Wrapf(err, "updating load balancer virtual server %s (%s) failed", server.DisplayName, server.Id)
+		return errors.Wrapf(err, "updating load balancer virtual server %s (%s) failed", *server.DisplayName, *server.Id)
 	}
 	return nil
 }
 
 func (a *access) DeleteVirtualServer(id string) error {
-	statusCode, err := a.broker.DeleteLoadBalancerVirtualServer(id)
-	if statusCode == http.StatusNotFound {
+	err := a.broker.DeleteLoadBalancerVirtualServer(id)
+	if isNotFoundError(err) {
 		return nil
 	}
 	if err != nil {
@@ -237,14 +265,18 @@ func (a *access) DeleteVirtualServer(id string) error {
 	return nil
 }
 
-func (a *access) CreatePool(clusterName string, objectName ObjectName, mapping Mapping, members []loadbalancer.PoolMember, activeMonitorIds []string) (*loadbalancer.LbPool, error) {
-	pool := loadbalancer.LbPool{
-		Description:      fmt.Sprintf("pool for cluster %s, service %s created by %s", clusterName, objectName, AppName),
-		DisplayName:      fmt.Sprintf("cluster:%s:%s", clusterName, objectName),
-		Tags:             append(a.standardTags, clusterTag(clusterName), serviceTag(objectName), portTag(mapping)),
-		SnatTranslation:  &loadbalancer.LbSnatTranslation{Type_: "LbSnatAutoMap"},
-		Members:          members,
-		ActiveMonitorIds: activeMonitorIds,
+func (a *access) CreatePool(clusterName string, objectName types.NamespacedName, mapping Mapping, members []model.LBPoolMember, activeMonitorPaths []string) (*model.LBPool, error) {
+	snatTranslation, err := newNsxtTypeConverter().createLBSnatAutoMap()
+	if err != nil {
+		return nil, errors.Wrapf(err, "creating pool failed on preparing LBSnatAutoMap failed")
+	}
+	pool := model.LBPool{
+		Description:        strptr(fmt.Sprintf("pool for cluster %s, service %s created by %s", clusterName, objectName, AppName)),
+		DisplayName:        strptr(fmt.Sprintf("cluster:%s:%s", clusterName, objectName)),
+		Tags:               a.standardTags.Clone(clusterTag(clusterName), serviceTag(objectName), portTag(mapping)).Normalize(),
+		SnatTranslation:    snatTranslation,
+		Members:            members,
+		ActiveMonitorPaths: activeMonitorPaths,
 	}
 	result, err := a.broker.CreateLoadBalancerPool(pool)
 	if err != nil {
@@ -253,7 +285,7 @@ func (a *access) CreatePool(clusterName string, objectName ObjectName, mapping M
 	return &result, nil
 }
 
-func (a *access) GetPool(id string) (*loadbalancer.LbPool, error) {
+func (a *access) GetPool(id string) (*model.LBPool, error) {
 	pool, err := a.broker.ReadLoadBalancerPool(id)
 	if err != nil {
 		return nil, err
@@ -261,53 +293,54 @@ func (a *access) GetPool(id string) (*loadbalancer.LbPool, error) {
 	return &pool, nil
 }
 
-func (a *access) FindPool(clusterName string, objectName ObjectName, mapping Mapping) (*loadbalancer.LbPool, error) {
+func (a *access) FindPool(clusterName string, objectName types.NamespacedName, mapping Mapping) (*model.LBPool, error) {
 	list, err := a.broker.ListLoadBalancerPools()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing load balancer pools failed")
 	}
-	for _, item := range list.Results {
-		if checkTags(item.Tags, a.ownerTag, clusterTag(clusterName), serviceTag(objectName), portTag(mapping)) {
+	tags := []model.Tag{a.ownerTag, clusterTag(clusterName), serviceTag(objectName), portTag(mapping)}
+	for _, item := range list {
+		if checkTags(item.Tags, tags...) {
 			return &item, nil
 		}
 	}
 	return nil, nil
 }
 
-func (a *access) FindPools(clusterName string, objectName ObjectName) ([]*loadbalancer.LbPool, error) {
+func (a *access) FindPools(clusterName string, objectName types.NamespacedName) ([]*model.LBPool, error) {
 	return a.listPools(a.ownerTag, clusterTag(clusterName), serviceTag(objectName))
 }
 
-func (a *access) ListPools(clusterName string) ([]*loadbalancer.LbPool, error) {
+func (a *access) ListPools(clusterName string) ([]*model.LBPool, error) {
 	return a.listPools(a.ownerTag, clusterTag(clusterName))
 }
 
-func (a *access) listPools(tags ...common.Tag) ([]*loadbalancer.LbPool, error) {
+func (a *access) listPools(tags ...model.Tag) ([]*model.LBPool, error) {
 	list, err := a.broker.ListLoadBalancerPools()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing pools failed")
 	}
-	var result []*loadbalancer.LbPool
-	for _, item := range list.Results {
+	var result []*model.LBPool
+	for _, item := range list {
 		if checkTags(item.Tags, tags...) {
-			copy := item
-			result = append(result, &copy)
+			itemCopy := item
+			result = append(result, &itemCopy)
 		}
 	}
 	return result, nil
 }
 
-func (a *access) UpdatePool(pool *loadbalancer.LbPool) error {
+func (a *access) UpdatePool(pool *model.LBPool) error {
 	_, err := a.broker.UpdateLoadBalancerPool(*pool)
 	if err != nil {
-		return errors.Wrapf(err, "updating load balancer pool %s (%s) failed", pool.DisplayName, pool.Id)
+		return errors.Wrapf(err, "updating load balancer pool %s (%s) failed", *pool.DisplayName, *pool.Id)
 	}
 	return nil
 }
 
 func (a *access) DeletePool(id string) error {
-	statusCode, err := a.broker.DeleteLoadBalancerPool(id)
-	if statusCode == http.StatusNotFound {
+	err := a.broker.DeleteLoadBalancerPool(id)
+	if isNotFoundError(err) {
 		return nil
 	}
 	if err != nil {
@@ -316,72 +349,71 @@ func (a *access) DeletePool(id string) error {
 	return nil
 }
 
-func (a *access) CreateTCPMonitor(clusterName string, objectName ObjectName, mapping Mapping) (*loadbalancer.LbTcpMonitor, error) {
-	monitor, err := a.broker.CreateLoadBalancerTCPMonitor(loadbalancer.LbTcpMonitor{
-		Description: fmt.Sprintf("tcp monitor for cluster %s, service %s, port %d created by %s",
-			clusterName, objectName, mapping.NodePort, AppName),
-		DisplayName: fmt.Sprintf("cluster:%s:%s:%d", clusterName, objectName, mapping.NodePort),
-		Tags:        append(a.standardTags, clusterTag(clusterName), serviceTag(objectName), portTag(mapping)),
-		MonitorPort: fmt.Sprintf("%d", mapping.NodePort),
-	})
+func (a *access) CreateTCPMonitorProfile(clusterName string, objectName types.NamespacedName, mapping Mapping) (*model.LBTcpMonitorProfile, error) {
+	profile := model.LBTcpMonitorProfile{
+		Description: strptr(fmt.Sprintf("tcp monitor for cluster %s, service %s, port %d created by %s",
+			clusterName, objectName, mapping.NodePort, AppName)),
+		DisplayName: strptr(fmt.Sprintf("cluster:%s:%s:%d", clusterName, objectName, mapping.NodePort)),
+		Tags:        a.standardTags.Clone(clusterTag(clusterName), serviceTag(objectName), portTag(mapping)).Normalize(),
+		MonitorPort: int64ptr(int64(mapping.NodePort)),
+	}
+	monitor, err := a.broker.CreateLoadBalancerTCPMonitorProfile(profile)
 	if err != nil {
 		return nil, errors.Wrapf(err, "creating tcp monitor failed for %s:%s:%d", clusterName, objectName, mapping.NodePort)
 	}
 	return &monitor, nil
 }
 
-func (a *access) GetTCPMonitor(id string) (*loadbalancer.LbTcpMonitor, error) {
-	monitor, err := a.broker.ReadLoadBalancerTCPMonitor(id)
+func (a *access) GetTCPMonitorProfile(id string) (*model.LBTcpMonitorProfile, error) {
+	monitor, err := a.broker.ReadLoadBalancerTCPMonitorProfile(id)
 	if err != nil {
 		return nil, errors.Wrapf(err, "reading tcp monitor %s failed", id)
 	}
 	return &monitor, nil
 }
 
-func (a *access) FindTCPMonitors(clusterName string, objectName ObjectName) ([]*loadbalancer.LbTcpMonitor, error) {
-	list, err := a.broker.ListLoadBalancerMonitors()
+func (a *access) FindTCPMonitorProfiles(clusterName string, objectName types.NamespacedName) ([]*model.LBTcpMonitorProfile, error) {
+	return a.listTCPMonitorProfiles(a.ownerTag, clusterTag(clusterName), serviceTag(objectName))
+}
+
+func (a *access) ListTCPMonitorProfiles(clusterName string) ([]*model.LBTcpMonitorProfile, error) {
+	return a.listTCPMonitorProfiles(a.ownerTag, clusterTag(clusterName))
+}
+
+func (a *access) listTCPMonitorProfiles(tags ...model.Tag) ([]*model.LBTcpMonitorProfile, error) {
+	list, err := a.broker.ListLoadBalancerMonitorProfiles()
 	if err != nil {
 		return nil, errors.Wrapf(err, "listing load balancer monitors failed")
 	}
-	result := []*loadbalancer.LbTcpMonitor{}
-	for _, item := range list.Results {
-		if item.ResourceType == "LbTcpMonitor" && checkTags(item.Tags, a.ownerTag, clusterTag(clusterName), serviceTag(objectName)) {
-			monitor, err := a.broker.ReadLoadBalancerTCPMonitor(item.Id)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, &monitor)
+	result := []*model.LBTcpMonitorProfile{}
+	converter := newNsxtTypeConverter()
+	for _, item := range list {
+		resourceType, err := item.String("resource_type")
+		if err != nil || resourceType != model.LBMonitorProfile_RESOURCE_TYPE_LBTCPMONITORPROFILE {
+			continue
+		}
+		profile, err := converter.convertStructValueToLBTCPMonitorProfile(item)
+		if err != nil {
+			return nil, err
+		}
+		if checkTags(profile.Tags, tags...) {
+			result = append(result, &profile)
 		}
 	}
 	return result, nil
 }
 
-func (a *access) ListTCPMonitorLight(clusterName string) ([]*loadbalancer.LbMonitor, error) {
-	list, err := a.broker.ListLoadBalancerMonitors()
+func (a *access) UpdateTCPMonitorProfile(monitor *model.LBTcpMonitorProfile) error {
+	_, err := a.broker.UpdateLoadBalancerTCPMonitorProfile(*monitor)
 	if err != nil {
-		return nil, errors.Wrapf(err, "listing load balancer monitors failed")
-	}
-	result := []*loadbalancer.LbMonitor{}
-	for _, item := range list.Results {
-		if item.ResourceType == "LbTcpMonitor" && checkTags(item.Tags, a.ownerTag, clusterTag(clusterName)) {
-			copy := item
-			result = append(result, &copy)
-		}
-	}
-	return result, nil
-}
-
-func (a *access) UpdateTCPMonitor(monitor *loadbalancer.LbTcpMonitor) error {
-	_, err := a.broker.UpdateLoadBalancerTCPMonitor(*monitor)
-	if err != nil {
-		return errors.Wrapf(err, "updating load balancer TCP monitor %s (%s) failed", monitor.DisplayName, monitor.Id)
+		return errors.Wrapf(err, "updating load balancer TCP monitor %s (%s) failed", *monitor.DisplayName, *monitor.Id)
 	}
 	return nil
 }
 
-func (a *access) DeleteTCPMonitor(id string) error {
-	statusCode, err := a.broker.DeleteLoadBalancerMonitor(id)
-	if statusCode == http.StatusNotFound {
+func (a *access) DeleteTCPMonitorProfile(id string) error {
+	err := a.broker.DeleteLoadBalancerMonitorProfile(id)
+	if isNotFoundError(err) {
 		return nil
 	}
 	if err != nil {
@@ -390,47 +422,60 @@ func (a *access) DeleteTCPMonitor(id string) error {
 	return nil
 }
 
-func (a *access) AllocateExternalIPAddress(ipPoolID string) (string, error) {
-	ipAddress, statusCode, err := a.broker.AllocateFromIPPool(ipPoolID)
+func (a *access) AllocateExternalIPAddress(ipPoolID string, clusterName string, objectName types.NamespacedName) (string, error) {
+	allocation := model.IpAddressAllocation{
+		Tags: a.standardTags.Clone(clusterTag(clusterName), serviceTag(objectName)).Normalize(),
+	}
+	allocated, err := a.broker.AllocateFromIPPool(ipPoolID, allocation)
 	if err != nil {
 		return "", errors.Wrapf(err, "allocating external IP address failed")
 	}
-	if statusCode != http.StatusOK {
-		return "", fmt.Errorf("allocating external IP address failed with unexpected status code %d", statusCode)
-	}
-	return ipAddress, nil
+	return *allocated.AllocationIp, nil
 }
 
-func (a *access) IsAllocatedExternalIPAddress(ipPoolID string, ipAddress string) (bool, error) {
-	ipAddresses, statusCode, err := a.broker.ListIPPoolAllocations(ipPoolID)
-	if statusCode == http.StatusNotFound {
-		return false, nil
-	}
+func (a *access) FindExternalIPAddressForObject(ipPoolID string, clusterName string, objectName types.NamespacedName) (*model.IpAddressAllocation, error) {
+	results, err := a.findExternalIPAddresses(ipPoolID, a.ownerTag, clusterTag(clusterName), serviceTag(objectName))
 	if err != nil {
-		return false, errors.Wrapf(err, "listing IP addresses from load balancer IP pool %s (%s) failed",
-			a.config.LoadBalancer.IPPoolName, ipPoolID)
+		return nil, err
 	}
-	if statusCode != http.StatusOK {
-		return false, fmt.Errorf("unexpected status code %d returned on listing IP addresses from load balancer IP pool %s (%s)",
-			statusCode, a.config.LoadBalancer.IPPoolName, ipPoolID)
+	if len(results) > 0 {
+		return results[0], nil
 	}
+	return nil, nil
+}
 
-	for _, address := range ipAddresses {
-		if address == ipAddress {
-			return true, nil
+func (a *access) FindExternalIPAddresses(ipPoolID string, clusterName string) ([]*model.IpAddressAllocation, error) {
+	return a.findExternalIPAddresses(ipPoolID, a.ownerTag, clusterTag(clusterName))
+}
+
+func (a *access) findExternalIPAddresses(ipPoolID string, tags ...model.Tag) ([]*model.IpAddressAllocation, error) {
+	list, err := a.broker.ListIPPoolAllocations(ipPoolID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "listing IP address allocations from IP pool %s failed", ipPoolID)
+	}
+	results := []*model.IpAddressAllocation{}
+	for _, item := range list {
+		if checkTags(item.Tags, tags...) {
+			itemCopy := item
+			if itemCopy.AllocationIp == nil {
+				itemCopy.AllocationIp, err = a.broker.GetRealizedExternalIPAddress(*itemCopy.Path, 5*time.Second)
+				if err != nil {
+					return nil, errors.Wrapf(err, "GetReleaziedExternalIPAddress failed for allocation %s IP pool %s failed", *itemCopy.Path, ipPoolID)
+				}
+			}
+			results = append(results, &itemCopy)
 		}
 	}
-	return false, nil
+	return results, nil
 }
 
-func (a *access) ReleaseExternalIPAddress(ipPoolID string, address string) error {
-	statusCode, err := a.broker.ReleaseFromIPPool(ipPoolID, address)
-	if statusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code %d returned releasing IP address %s from load balancer IP pool %s (%s)",
-			statusCode, address, a.config.LoadBalancer.IPPoolName, ipPoolID)
+func (a *access) ReleaseExternalIPAddress(ipPoolID string, id string) error {
+	err := a.broker.ReleaseFromIPPool(ipPoolID, id)
+	if isNotFoundError(err) {
+		return nil
 	}
 	if err != nil {
-		return errors.Wrapf(err, "releasing external IP address %s failed", address)
+		return errors.Wrapf(err, "releasing external IP address allocation id=%s failed", id)
 	}
 	return nil
 }

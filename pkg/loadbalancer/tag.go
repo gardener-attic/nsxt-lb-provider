@@ -19,28 +19,65 @@ package loadbalancer
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
-	"github.com/vmware/go-vmware-nsxt/common"
+	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-func clusterTag(clusterName string) common.Tag {
-	return common.Tag{Scope: ScopeCluster, Tag: clusterName}
+// Tags is a map of NSXT-T tags indexed by the tag scope
+type Tags map[string]model.Tag
+
+// ByScope is an array of sags sortable by tag scope
+type ByScope []model.Tag
+
+func (a ByScope) Len() int           { return len(a) }
+func (a ByScope) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByScope) Less(i, j int) bool { return strings.Compare(*a[i].Scope, *a[j].Scope) < 0 }
+
+// Clone clones the Tags and optionally adds additional tags
+func (m Tags) Clone(tags ...model.Tag) Tags {
+	result := Tags{}
+	for n, t := range m {
+		result[n] = t
+	}
+	for _, t := range tags {
+		result[*t.Scope] = t
+	}
+	return result
 }
 
-func serviceTag(objectName ObjectName) common.Tag {
-	return common.Tag{Scope: ScopeService, Tag: objectName.String()}
+// Normalize returns a tag array sorted by scopes
+func (m Tags) Normalize() []model.Tag {
+	result := make(ByScope, len(m))
+	cnt := 0
+	for _, t := range m {
+		result[cnt] = t
+		cnt++
+	}
+	sort.Sort(result)
+	return result
 }
 
-func portTag(mapping Mapping) common.Tag {
-	return common.Tag{Scope: ScopePort, Tag: fmt.Sprintf("%s/%d", mapping.Protocol, mapping.SourcePort)}
+func clusterTag(clusterName string) model.Tag {
+	return model.Tag{Scope: strptr(ScopeCluster), Tag: strptr(clusterName)}
 }
 
-func checkTags(tags []common.Tag, required ...common.Tag) bool {
+func serviceTag(objectName types.NamespacedName) model.Tag {
+	return model.Tag{Scope: strptr(ScopeService), Tag: strptr(objectName.String())}
+}
+
+func portTag(mapping Mapping) model.Tag {
+	return model.Tag{Scope: strptr(ScopePort), Tag: strptr(fmt.Sprintf("%s/%d", mapping.Protocol, mapping.SourcePort))}
+}
+
+func checkTags(tags []model.Tag, required ...model.Tag) bool {
 outer:
 	for _, req := range required {
 		for _, tag := range tags {
-			if tag.Scope == req.Scope {
-				if tag.Tag != req.Tag {
+			if *tag.Scope == *req.Scope {
+				if *tag.Tag != *req.Tag {
 					return false
 				}
 				continue outer
@@ -51,10 +88,10 @@ outer:
 	return true
 }
 
-func getTag(tags []common.Tag, scope string) string {
+func getTag(tags []model.Tag, scope string) string {
 	for _, tag := range tags {
-		if tag.Scope == scope {
-			return tag.Tag
+		if *tag.Scope == scope {
+			return *tag.Tag
 		}
 	}
 	return ""

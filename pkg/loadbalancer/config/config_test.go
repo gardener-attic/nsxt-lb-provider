@@ -24,12 +24,14 @@ import (
 )
 
 func TestReadConfig(t *testing.T) {
-	s1 := `
+	contents := `
 [LoadBalancer]
 ipPoolName = pool1
 size = MEDIUM
 lbServiceId = 4711
-logicalRouterId = 1234
+tier1GatewayPath = 1234
+tcpAppProfileName = default-tcp-lb-app-profile
+udpAppProfileName = default-udp-lb-app-profile
 
 [LoadBalancerClass "public"]
 ipPoolName = poolPublic
@@ -45,60 +47,81 @@ tag2 = value2
 user = admin
 password = secret
 host = nsxt-server
-retry-on-status-codes = 1
-retry-on-status-codes = 2
-retry-on-status-codes = 3
 
 [NSX-T-Simulation]
 simulatedIPPools = a
 simulatedIPPools = b
 simulatedIPPools = c
 `
-	config, err := ReadConfig(strings.NewReader(s1))
+	config, err := ReadConfig(strings.NewReader(contents))
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	if config.LoadBalancer.IPPoolName != "pool1" {
-		t.Errorf("ipPoolName %s != %s", config.LoadBalancer.IPPoolName, "pool1")
+
+	assertEquals := func(name, left, right string) {
+		if left != right {
+			t.Errorf("%s %s != %s", name, left, right)
+		}
 	}
-	if config.LoadBalancer.LBServiceID != "4711" {
-		t.Errorf("lbServiceId %s != %s", config.LoadBalancer.LBServiceID, "4711")
-	}
-	if config.LoadBalancer.LogicalRouterID != "1234" {
-		t.Errorf("LoadBalancer.logicalRouterId %s != %s", config.LoadBalancer.LogicalRouterID, "1234")
-	}
-	if config.LoadBalancer.Size != "MEDIUM" {
-		t.Errorf("size %s != %s", config.LoadBalancer.Size, "MEDIUM")
-	}
+	assertEquals("LoadBalancer.ipPoolName", config.LoadBalancer.IPPoolName, "pool1")
+	assertEquals("LoadBalancer.lbServiceId", config.LoadBalancer.LBServiceID, "4711")
+	assertEquals("LoadBalancer.tier1GatewayPath", config.LoadBalancer.Tier1GatewayPath, "1234")
+	assertEquals("LoadBalancer.tcpAppProfileName", config.LoadBalancer.TCPAppProfileName, "default-tcp-lb-app-profile")
+	assertEquals("LoadBalancer.udpAppProfileName", config.LoadBalancer.UDPAppProfileName, "default-udp-lb-app-profile")
+	assertEquals("LoadBalancer.size", config.LoadBalancer.Size, "MEDIUM")
 	if len(config.LoadBalancerClasses) != 2 {
 		t.Errorf("expected two LoadBalancerClass subsections, but got %d", len(config.LoadBalancerClasses))
 	}
-	if config.LoadBalancerClasses["public"].IPPoolName != "poolPublic" {
-		t.Errorf("public ipPoolName %s != %s", config.LoadBalancerClasses["public"].IPPoolName, "poolPublic")
-	}
+	assertEquals("LoadBalancerClass.public.ipPoolName", config.LoadBalancerClasses["public"].IPPoolName, "poolPublic")
 	if len(config.AdditionalTags) != 2 || config.AdditionalTags["tag1"] != "value1" || config.AdditionalTags["tag2"] != "value2" {
 		t.Errorf("unexpected additionalTags %v", config.AdditionalTags)
 	}
-	if config.NSXT.User != "admin" {
-		t.Errorf("NSX-T.user %s != %s", config.NSXT.User, "admin")
-	}
-	if config.NSXT.Password != "secret" {
-		t.Errorf("NSX-T.password %s != %s", config.NSXT.Password, "secret")
-	}
-	if config.NSXT.Host != "nsxt-server" {
-		t.Errorf("NSX-T.host %s != %s", config.NSXT.Host, "nsxt-server")
-	}
-	if config.NSXT.RetryMinDelay != DefaultRetryMinDelay || config.NSXT.RetryMaxDelay != DefaultRetryMaxDelay || config.NSXT.MaxRetries != DefaultMaxRetries {
-		t.Errorf("missing default values for RetryMinDelay/RetryMaxDelay/MaxRetries")
-	}
-	if fmt.Sprintf("%v", config.NSXT.RetryOnStatusCodes) != "[1 2 3]" {
-		t.Errorf("unexpected RetryOnStatusCodes: %v", config.NSXT.RetryOnStatusCodes)
-	}
+	assertEquals("NSX-T.user", config.NSXT.User, "admin")
+	assertEquals("NSX-T.password", config.NSXT.Password, "secret")
+	assertEquals("NSX-T.host", config.NSXT.Host, "nsxt-server")
 	if config.NSXTSimulation == nil {
 		t.Errorf("NSX-T-Simulation missing")
 	}
 	if fmt.Sprintf("%v", config.NSXTSimulation.SimulatedIPPools) != "[a b c]" {
 		t.Errorf("unexpected SimulatedIPPools: %v", config.NSXTSimulation.SimulatedIPPools)
+	}
+}
+
+func TestReadConfig2(t *testing.T) {
+	contents := `
+[LoadBalancer]
+ipPoolID = 123-456
+size = MEDIUM
+tier1GatewayPath = 1234
+tcpAppProfilePath = infra/xxx/tcp1234
+udpAppProfilePath = infra/xxx/udp1234
+
+[NSX-T]
+vmcAccessToken = token123
+vmcAuthHost = authHost
+host = nsxt-server
+insecure-flag = true
+`
+	config, err := ReadConfig(strings.NewReader(contents))
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	assertEquals := func(name, left, right string) {
+		if left != right {
+			t.Errorf("%s %s != %s", name, left, right)
+		}
+	}
+	assertEquals("LoadBalancer.ipPoolID", config.LoadBalancer.IPPoolID, "123-456")
+	assertEquals("LoadBalancer.size", config.LoadBalancer.Size, "MEDIUM")
+	assertEquals("LoadBalancer.tier1GatewayPath", config.LoadBalancer.Tier1GatewayPath, "1234")
+	assertEquals("LoadBalancer.tcpAppProfilePath", config.LoadBalancer.TCPAppProfilePath, "infra/xxx/tcp1234")
+	assertEquals("LoadBalancer.udpAppProfilePath", config.LoadBalancer.UDPAppProfilePath, "infra/xxx/udp1234")
+	assertEquals("NSX-T.vmcAccessToken", config.NSXT.VMCAccessToken, "token123")
+	assertEquals("NSX-T.vmcAuthHost", config.NSXT.VMCAuthHost, "authHost")
+	assertEquals("NSX-T.host", config.NSXT.Host, "nsxt-server")
+	if !config.NSXT.InsecureFlag {
+		t.Errorf("NSX-T.insecure-flag != true")
 	}
 }

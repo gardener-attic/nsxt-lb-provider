@@ -23,16 +23,15 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-	nsxt "github.com/vmware/go-vmware-nsxt"
 	corev1 "k8s.io/api/core/v1"
-	cloudprovider "k8s.io/cloud-provider"
+	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
 
 const (
-	// AnnotLoadBalancerClass is the optional class annotation at the service
-	AnnotLoadBalancerClass = "loadbalancer.vmware.io/class"
+	// LoadBalancerClassAnnotation is the optional class annotation at the service
+	LoadBalancerClassAnnotation = "loadbalancer.vmware.io/class"
 )
 
 type lbProvider struct {
@@ -45,14 +44,17 @@ type lbProvider struct {
 // TODO cluster name needed for reorg and is currently injected from main
 var ClusterName string
 
-var _ cloudprovider.LoadBalancer = &lbProvider{}
+// NewLBProvider creates a new LBProvider
+func NewLBProvider(cfg *config.LBConfig) (LBProvider, error) {
+	if !cfg.IsEnabled() {
+		return nil, nil
+	}
 
-func newLBProvider(cfg *config.LBConfig) (*lbProvider, error) {
 	broker, err := setupNsxtBroker(&cfg.NSXT, cfg.NSXTSimulation)
 	if err != nil {
 		return nil, err
 	}
-	access, err := NewAccess(broker, cfg)
+	access, err := NewNSXTAccess(broker, cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "creating access handler failed")
 	}
@@ -65,41 +67,15 @@ func newLBProvider(cfg *config.LBConfig) (*lbProvider, error) {
 
 func setupNsxtBroker(nsxtConfig *config.NsxtConfig, nsxtSim *config.NsxtSimulation) (NsxtBroker, error) {
 	if nsxtSim != nil {
-		return NewInMemoryNsxtBroker(nsxtSim.SimulatedIPPools...), nil
+		// TODO simulation not implemented yet
+		panic("simulation not implemented yet")
+		//NewInMemoryNsxtBroker(nsxtSim.SimulatedIPPools...), nil
 	}
 
-	retriesConfig := nsxt.ClientRetriesConfiguration{
-		MaxRetries:      nsxtConfig.MaxRetries,
-		RetryMinDelay:   nsxtConfig.RetryMinDelay,
-		RetryMaxDelay:   nsxtConfig.RetryMaxDelay,
-		RetryOnStatuses: nsxtConfig.RetryOnStatusCodes,
-	}
-	cfg := nsxt.Configuration{
-		BasePath:             "/api/v1",
-		Host:                 nsxtConfig.Host,
-		Scheme:               "https",
-		UserAgent:            "nsxt-lb-provider/" + Version,
-		UserName:             nsxtConfig.User,
-		Password:             nsxtConfig.Password,
-		RemoteAuth:           nsxtConfig.RemoteAuth,
-		ClientAuthCertFile:   nsxtConfig.ClientAuthCertFile,
-		ClientAuthKeyFile:    nsxtConfig.ClientAuthKeyFile,
-		CAFile:               nsxtConfig.CAFile,
-		Insecure:             nsxtConfig.InsecureFlag,
-		RetriesConfiguration: retriesConfig,
-	}
-	client, err := nsxt.NewAPIClient(&cfg)
-	if err != nil {
-		return nil, errors.Wrap(err, "creating NSX-T client failed")
-	}
-	return NewNsxtBroker(client), nil
+	return NewNsxtBroker(nsxtConfig)
 }
 
-func (p *lbProvider) Initialize(clientBuilder cloudprovider.ControllerClientBuilder, stop <-chan struct{}) {
-	client, err := clientBuilder.Client("reorg")
-	if err != nil {
-		panic(err)
-	}
+func (p *lbProvider) Initialize(client clientset.Interface, stop <-chan struct{}) {
 	go p.reorg(client.CoreV1().Services(""), stop)
 }
 
@@ -107,7 +83,7 @@ func (p *lbProvider) Initialize(clientBuilder cloudprovider.ControllerClientBuil
 // Implementations must treat the *corev1.Service parameter as read-only and not modify it.
 // Parameter 'clusterName' is the name of the cluster as presented to kube-controller-manager
 func (p *lbProvider) GetLoadBalancer(ctx context.Context, clusterName string, service *corev1.Service) (status *corev1.LoadBalancerStatus, exists bool, err error) {
-	servers, err := p.access.FindVirtualServers(clusterName, objectNameFromService(service))
+	servers, err := p.access.FindVirtualServers(clusterName, namespacedNameFromService(service))
 	if err != nil {
 		return nil, false, err
 	}
@@ -136,7 +112,7 @@ func (p *lbProvider) GetLoadBalancerName(ctx context.Context, clusterName string
 // parameters as read-only and not modify them.
 // Parameter 'clusterName' is the name of the cluster as presented to kube-controller-manager
 func (p *lbProvider) EnsureLoadBalancer(ctx context.Context, clusterName string, service *corev1.Service, nodes []*corev1.Node) (*corev1.LoadBalancerStatus, error) {
-	key := objectNameFromService(service).String()
+	key := namespacedNameFromService(service).String()
 	p.keyLock.Lock(key)
 	defer p.keyLock.Unlock(key)
 
@@ -159,7 +135,7 @@ func (p *lbProvider) classFromService(service *corev1.Service) (*loadBalancerCla
 	if annos == nil {
 		annos = map[string]string{}
 	}
-	name, ok := annos[AnnotLoadBalancerClass]
+	name, ok := annos[LoadBalancerClassAnnotation]
 	name = strings.TrimSpace(name)
 	if !ok || name == "" {
 		name = config.DefaultLoadBalancerClass
@@ -177,7 +153,7 @@ func (p *lbProvider) classFromService(service *corev1.Service) (*loadBalancerCla
 // parameters as read-only and not modify them.
 // Parameter 'clusterName' is the name of the cluster as presented to kube-controller-manager
 func (p *lbProvider) UpdateLoadBalancer(ctx context.Context, clusterName string, service *corev1.Service, nodes []*corev1.Node) error {
-	key := objectNameFromService(service).String()
+	key := namespacedNameFromService(service).String()
 	p.keyLock.Lock(key)
 	defer p.keyLock.Unlock(key)
 

@@ -21,8 +21,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/vmware/go-vmware-nsxt/loadbalancer"
 	corev1 "k8s.io/api/core/v1"
+
+	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
 )
 
 // Mapping defines the port mapping and protocol
@@ -48,24 +49,24 @@ func (m Mapping) String() string {
 	return fmt.Sprintf("%s/%d->%d", m.Protocol, m.SourcePort, m.NodePort)
 }
 
-// MatchVirtualServer returns true if source port and protocol are matching
-func (m Mapping) MatchVirtualServer(server *loadbalancer.LbVirtualServer) bool {
-	return server.Port == formatPort(m.SourcePort) && server.IpProtocol == string(m.Protocol)
+// MatchVirtualServer returns true if source port is matching
+func (m Mapping) MatchVirtualServer(server *model.LBVirtualServer) bool {
+	return len(server.Ports) == 1 && server.Ports[0] == formatPort(m.SourcePort) && checkTags(server.Tags, portTag(m))
 }
 
 // MatchPool returns true if the pool has the correct port tag
-func (m Mapping) MatchPool(pool *loadbalancer.LbPool) bool {
+func (m Mapping) MatchPool(pool *model.LBPool) bool {
 	return checkTags(pool.Tags, portTag(m))
 }
 
 // MatchTCPMonitor returns true if the monitor has the correct port tag
-func (m Mapping) MatchTCPMonitor(monitor *loadbalancer.LbTcpMonitor) bool {
+func (m Mapping) MatchTCPMonitor(monitor *model.LBTcpMonitorProfile) bool {
 	return checkTags(monitor.Tags, portTag(m))
 }
 
 // MatchNodePort returns true if the server pool member port is equal to the mapping's node port
-func (m Mapping) MatchNodePort(server *loadbalancer.LbVirtualServer) bool {
-	return server.DefaultPoolMemberPort == formatPort(m.NodePort)
+func (m Mapping) MatchNodePort(server *model.LBVirtualServer) bool {
+	return len(server.DefaultPoolMemberPorts) == 1 && server.DefaultPoolMemberPorts[0] == formatPort(m.NodePort)
 }
 
 func formatPort(port int) string {

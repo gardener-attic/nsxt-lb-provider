@@ -18,46 +18,58 @@
 package loadbalancer
 
 import (
-	"github.com/vmware/go-vmware-nsxt/common"
-	"github.com/vmware/go-vmware-nsxt/loadbalancer"
+	"github.com/vmware/vsphere-automation-sdk-go/services/nsxt/model"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
+	clientset "k8s.io/client-go/kubernetes"
+	cloudprovider "k8s.io/cloud-provider"
 )
 
-// Access provides methods for dealing with NSX-T objects
-type Access interface {
+// LBProvider is the interface used call the load balancer functionality
+// It extends the cloud controller manager LoadBalancer interface by an
+// initialization function
+type LBProvider interface {
+	cloudprovider.LoadBalancer
+	Initialize(client clientset.Interface, stop <-chan struct{})
+	ReorgServices(services map[types.NamespacedName]corev1.Service) error
+}
+
+// NSXTAccess provides methods for dealing with NSX-T objects
+type NSXTAccess interface {
 	// CreateLoadBalancerService creates a LbService
-	CreateLoadBalancerService(clusterName string) (*loadbalancer.LbService, error)
+	CreateLoadBalancerService(clusterName string) (*model.LBService, error)
 	// FindLoadBalancerService finds a LbService by cluster name and LB service id
-	FindLoadBalancerService(clusterName string, lbServiceID string) (lbService *loadbalancer.LbService, err error)
-	// FindLoadBalancerServiceForVirtualServer finds the LbService for a virtual server
-	FindLoadBalancerServiceForVirtualServer(clusterName string, serverID string) (lbService *loadbalancer.LbService, err error)
+	FindLoadBalancerService(clusterName string, lbServiceID string) (lbService *model.LBService, err error)
 	// UpdateLoadBalancerService updates a LbService
-	UpdateLoadBalancerService(lbService *loadbalancer.LbService) error
+	UpdateLoadBalancerService(lbService *model.LBService) error
 	// DeleteLoadBalancerService deletes a LbService by id
 	DeleteLoadBalancerService(id string) error
 
 	// CreateVirtualServer creates a virtual server
-	CreateVirtualServer(clusterName string, objectName ObjectName, tags TagSource, ipAddress string, mapping Mapping, poolID string) (*loadbalancer.LbVirtualServer, error)
+	CreateVirtualServer(clusterName string, objectName types.NamespacedName, tags TagSource, ipAddress string, mapping Mapping,
+		lbServicePath string, poolPath *string) (*model.LBVirtualServer, error)
 	// FindVirtualServers finds a virtual server by cluster and object name
-	FindVirtualServers(clusterName string, objectName ObjectName) ([]*loadbalancer.LbVirtualServer, error)
+	FindVirtualServers(clusterName string, objectName types.NamespacedName) ([]*model.LBVirtualServer, error)
 	// ListVirtualServers finds all virtual servers for a cluster
-	ListVirtualServers(clusterName string) ([]*loadbalancer.LbVirtualServer, error)
+	ListVirtualServers(clusterName string) ([]*model.LBVirtualServer, error)
 	// UpdateVirtualServer updates a virtual server
-	UpdateVirtualServer(server *loadbalancer.LbVirtualServer) error
+	UpdateVirtualServer(server *model.LBVirtualServer) error
 	// DeleteVirtualServer deletes a virtual server by id
 	DeleteVirtualServer(id string) error
 
 	// CreatePool creates a LbPool
-	CreatePool(clusterName string, objectName ObjectName, mapping Mapping, members []loadbalancer.PoolMember, activeMonitorIDs []string) (*loadbalancer.LbPool, error)
+	CreatePool(clusterName string, objectName types.NamespacedName, mapping Mapping, members []model.LBPoolMember,
+		activeMonitorPaths []string) (*model.LBPool, error)
 	// GetPool gets a LbPool by id
-	GetPool(id string) (*loadbalancer.LbPool, error)
+	GetPool(id string) (*model.LBPool, error)
 	// FindPool finds a LbPool for a mapping
-	FindPool(clusterName string, objectName ObjectName, mapping Mapping) (*loadbalancer.LbPool, error)
+	FindPool(clusterName string, objectName types.NamespacedName, mapping Mapping) (*model.LBPool, error)
 	// FindPools finds a LbPool by cluster and object name
-	FindPools(clusterName string, objectName ObjectName) ([]*loadbalancer.LbPool, error)
+	FindPools(clusterName string, objectName types.NamespacedName) ([]*model.LBPool, error)
 	// ListPools lists all LbPool for a cluster
-	ListPools(clusterName string) ([]*loadbalancer.LbPool, error)
+	ListPools(clusterName string) ([]*model.LBPool, error)
 	// UpdatePool updates a LbPool
-	UpdatePool(*loadbalancer.LbPool) error
+	UpdatePool(*model.LBPool) error
 	// DeletePool deletes a LbPool by id
 	DeletePool(id string) error
 
@@ -65,37 +77,39 @@ type Access interface {
 	FindIPPoolByName(poolName string) (string, error)
 
 	// AllocateExternalIPAddress allocates an IP address from the given IP pool
-	AllocateExternalIPAddress(ipPoolID string) (string, error)
-	// IsAllocatedExternalIPAddress checks if an IP address is allocated in the given IP pool
-	IsAllocatedExternalIPAddress(ipPoolID string, address string) (bool, error)
+	AllocateExternalIPAddress(ipPoolID string, clusterName string, objectName types.NamespacedName) (string, error)
+	// FindExternalIPAddresses finds all IP addresses belonging to a clusterName from the given IP pool
+	FindExternalIPAddresses(ipPoolID string, clusterName string) ([]*model.IpAddressAllocation, error)
+	// FindExternalIPAddressForObject finds an IP address belonging to an object
+	FindExternalIPAddressForObject(ipPoolID string, clusterName string, objectName types.NamespacedName) (*model.IpAddressAllocation, error)
 	// ReleaseExternalIPAddress releases an allocated IP address
-	ReleaseExternalIPAddress(ipPoolID string, address string) error
+	ReleaseExternalIPAddress(ipPoolID string, id string) error
 
-	// CreateTCPMonitor creates a LbTcpMonitor
-	CreateTCPMonitor(clusterName string, objectName ObjectName, mapping Mapping) (*loadbalancer.LbTcpMonitor, error)
-	// FindTCPMonitors finds a LbTcpMonitor by cluster and object name
-	FindTCPMonitors(clusterName string, objectName ObjectName) ([]*loadbalancer.LbTcpMonitor, error)
-	// ListTCPMonitorLight list LbMonitors
-	ListTCPMonitorLight(clusterName string) ([]*loadbalancer.LbMonitor, error)
-	// UpdateTCPMonitor updates a LbTcpMonitor
-	UpdateTCPMonitor(monitor *loadbalancer.LbTcpMonitor) error
-	// DeleteTCPMonitor deletes a LbTcpMonitor by id
-	DeleteTCPMonitor(id string) error
+	// CreateTCPMonitorProfile creates a LBTcpMonitorProfile
+	CreateTCPMonitorProfile(clusterName string, objectName types.NamespacedName, mapping Mapping) (*model.LBTcpMonitorProfile, error)
+	// FindTCPMonitors finds a LBTcpMonitorProfile by cluster and object name
+	FindTCPMonitorProfiles(clusterName string, objectName types.NamespacedName) ([]*model.LBTcpMonitorProfile, error)
+	// ListTCPMonitorProfile lists LBTcpMonitorProfile by cluster
+	ListTCPMonitorProfiles(clusterName string) ([]*model.LBTcpMonitorProfile, error)
+	// UpdateTCPMonitorProfile updates a LBTcpMonitorProfile
+	UpdateTCPMonitorProfile(monitor *model.LBTcpMonitorProfile) error
+	// DeleteTCPMonitorProfile deletes a LBTcpMonitorProfile by id
+	DeleteTCPMonitorProfile(id string) error
 }
 
 // TagSource is an interface to retrieve Tags
 type TagSource interface {
 	// Tags retrieves tags of an object
-	Tags() []common.Tag
+	Tags() []model.Tag
 }
 
 // TagsSourceFunc is a function type to retrieve tags
-type TagsSourceFunc func() []common.Tag
+type TagsSourceFunc func() []model.Tag
 
 // Tags implements the TagSource interface
-func (n TagsSourceFunc) Tags() []common.Tag {
+func (n TagsSourceFunc) Tags() []model.Tag {
 	return n()
 }
 
 // EmptyTagsSource is an empty tags source
-var EmptyTagsSource = TagsSourceFunc(func() []common.Tag { return []common.Tag{} })
+var EmptyTagsSource = TagsSourceFunc(func() []model.Tag { return []model.Tag{} })
