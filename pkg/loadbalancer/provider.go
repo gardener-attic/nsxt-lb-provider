@@ -18,6 +18,7 @@
 package loadbalancer
 
 import (
+	"github.com/vmware/vsphere-automation-sdk-go/runtime/log"
 	cloudprovider "k8s.io/cloud-provider"
 
 	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
@@ -30,6 +31,9 @@ type provider struct {
 var _ cloudprovider.Interface = &provider{}
 
 func newProvider(config *config.LBConfig) (*provider, error) {
+	// redirect vapi logging to klog
+	log.SetLogger(NewKlogBridge())
+
 	lbProvider, err := NewLBProvider(config)
 	if err != nil {
 		return nil, err
