@@ -56,10 +56,10 @@ var _ NSXTAccess = &access{}
 // NewNSXTAccess creates a new NSXTAccess instance
 func NewNSXTAccess(broker NsxtBroker, config *config.LBConfig) (NSXTAccess, error) {
 	standardTags := Tags{
-		ScopeOwner: model.Tag{Scope: strptr(ScopeOwner), Tag: strptr(AppName)},
+		ScopeOwner: newTag(ScopeOwner, AppName),
 	}
 	for k, v := range config.AdditionalTags {
-		standardTags[k] = model.Tag{Scope: strptr(k), Tag: strptr(v)}
+		standardTags[k] = newTag(k, v)
 	}
 	return &access{
 		broker:       broker,
@@ -86,7 +86,7 @@ func (a *access) CreateLoadBalancerService(clusterName string) (*model.LBService
 	lbService := model.LBService{
 		Description:      strptr(fmt.Sprintf("virtual server pool for cluster %s created by %s", clusterName, AppName)),
 		DisplayName:      strptr(fmt.Sprintf("cluster:%s", clusterName)),
-		Tags:             a.standardTags.Clone(clusterTag(clusterName)).Normalize(),
+		Tags:             a.standardTags.Append(clusterTag(clusterName)).Normalize(),
 		Size:             strptr(a.config.LoadBalancer.Size),
 		Enabled:          boolptr(true),
 		ConnectivityPath: strptr(a.config.LoadBalancer.Tier1GatewayPath),
@@ -160,6 +160,7 @@ func (a *access) findAppProfilePathByName(profileName string, resourceType strin
 	if err != nil {
 		return "", err
 	}
+	path := ""
 	for _, item := range list {
 		itemResourceType, err := item.String("resource_type")
 		if err != nil {
@@ -170,44 +171,52 @@ func (a *access) findAppProfilePathByName(profileName string, resourceType strin
 			return "", errors.Wrapf(err, "findAppProfilePathByName cannot find field name")
 		}
 		if itemResourceType == resourceType && itemName == profileName {
-			path, err := item.String("path")
+			if path != "" {
+				return "", fmt.Errorf("profile name %s for resource type %s is not unique", profileName, resourceType)
+			}
+			path, err = item.String("path")
 			if err != nil {
 				return "", errors.Wrapf(err, "findAppProfilePathByName cannot find field path")
 			}
-			return path, nil
 		}
 	}
-	return "", fmt.Errorf("application profile named %s of type %s not found", profileName, resourceType)
+	if path == "" {
+		return "", fmt.Errorf("application profile named %s of type %s not found", profileName, resourceType)
+	}
+	return path, nil
 }
 
-func (a *access) getAppProfilePath(protocol corev1.Protocol) (string, error) {
+func (a *access) getAppProfilePath(class LBClass, protocol corev1.Protocol) (string, error) {
+	profileReference, err := class.AppProfile(protocol)
+	if err != nil {
+		return "", err
+	}
+	if profileReference.Identifier != "" {
+		return profileReference.Identifier, nil
+	}
+	resourceType := ""
 	switch protocol {
 	case corev1.ProtocolTCP:
-		if a.config.LoadBalancer.TCPAppProfilePath != "" {
-			return a.config.LoadBalancer.TCPAppProfilePath, nil
-		}
-		return a.findAppProfilePathByName(a.config.LoadBalancer.TCPAppProfileName, model.LBAppProfile_RESOURCE_TYPE_LBFASTTCPPROFILE)
+		resourceType = model.LBAppProfile_RESOURCE_TYPE_LBFASTTCPPROFILE
 	case corev1.ProtocolUDP:
-		if a.config.LoadBalancer.UDPAppProfilePath != "" {
-			return a.config.LoadBalancer.UDPAppProfilePath, nil
-		}
-		return a.findAppProfilePathByName(a.config.LoadBalancer.UDPAppProfileName, model.LBAppProfile_RESOURCE_TYPE_LBFASTUDPPROFILE)
+		resourceType = model.LBAppProfile_RESOURCE_TYPE_LBFASTUDPPROFILE
 	default:
 		return "", fmt.Errorf("Unsupported protocol %s", protocol)
 	}
+	return a.findAppProfilePathByName(profileReference.Name, resourceType)
 }
 
-func (a *access) CreateVirtualServer(clusterName string, objectName types.NamespacedName, tags TagSource, ipAddress string, mapping Mapping, lbServicePath string, poolPath *string) (*model.LBVirtualServer, error) {
-	applicationProfilePath, err := a.getAppProfilePath(mapping.Protocol)
+func (a *access) CreateVirtualServer(clusterName string, objectName types.NamespacedName, class LBClass, ipAddress string, mapping Mapping, lbServicePath string, poolPath *string) (*model.LBVirtualServer, error) {
+	applicationProfilePath, err := a.getAppProfilePath(class, mapping.Protocol)
 	if err != nil {
 		return nil, fmt.Errorf("Lookup of application profile failed for %s: %s", mapping.Protocol, err)
 	}
-	allTags := append(tags.Tags(), clusterTag(clusterName), serviceTag(objectName), portTag(mapping))
+	allTags := append(class.Tags(), clusterTag(clusterName), serviceTag(objectName), portTag(mapping))
 	virtualServer := model.LBVirtualServer{
 		Description: strptr(fmt.Sprintf("virtual server for cluster %s, service %s created by %s",
 			clusterName, objectName, AppName)),
 		DisplayName:            strptr(fmt.Sprintf("cluster:%s:%s", clusterName, objectName)),
-		Tags:                   a.standardTags.Clone(allTags...).Normalize(),
+		Tags:                   a.standardTags.Append(allTags...).Normalize(),
 		DefaultPoolMemberPorts: []string{fmt.Sprintf("%d", mapping.NodePort)},
 		Enabled:                boolptr(true),
 		IpAddress:              ipAddress,
@@ -273,7 +282,7 @@ func (a *access) CreatePool(clusterName string, objectName types.NamespacedName,
 	pool := model.LBPool{
 		Description:        strptr(fmt.Sprintf("pool for cluster %s, service %s created by %s", clusterName, objectName, AppName)),
 		DisplayName:        strptr(fmt.Sprintf("cluster:%s:%s", clusterName, objectName)),
-		Tags:               a.standardTags.Clone(clusterTag(clusterName), serviceTag(objectName), portTag(mapping)).Normalize(),
+		Tags:               a.standardTags.Append(clusterTag(clusterName), serviceTag(objectName), portTag(mapping)).Normalize(),
 		SnatTranslation:    snatTranslation,
 		Members:            members,
 		ActiveMonitorPaths: activeMonitorPaths,
@@ -354,7 +363,7 @@ func (a *access) CreateTCPMonitorProfile(clusterName string, objectName types.Na
 		Description: strptr(fmt.Sprintf("tcp monitor for cluster %s, service %s, port %d created by %s",
 			clusterName, objectName, mapping.NodePort, AppName)),
 		DisplayName: strptr(fmt.Sprintf("cluster:%s:%s:%d", clusterName, objectName, mapping.NodePort)),
-		Tags:        a.standardTags.Clone(clusterTag(clusterName), serviceTag(objectName), portTag(mapping)).Normalize(),
+		Tags:        a.standardTags.Append(clusterTag(clusterName), serviceTag(objectName), portTag(mapping)).Normalize(),
 		MonitorPort: int64ptr(int64(mapping.NodePort)),
 	}
 	monitor, err := a.broker.CreateLoadBalancerTCPMonitorProfile(profile)
@@ -424,7 +433,7 @@ func (a *access) DeleteTCPMonitorProfile(id string) error {
 
 func (a *access) AllocateExternalIPAddress(ipPoolID string, clusterName string, objectName types.NamespacedName) (string, error) {
 	allocation := model.IpAddressAllocation{
-		Tags: a.standardTags.Clone(clusterTag(clusterName), serviceTag(objectName)).Normalize(),
+		Tags: a.standardTags.Append(clusterTag(clusterName), serviceTag(objectName)).Normalize(),
 	}
 	allocated, err := a.broker.AllocateFromIPPool(ipPoolID, allocation)
 	if err != nil {

@@ -44,13 +44,15 @@ type lbProvider struct {
 // TODO cluster name needed for reorg and is currently injected from main
 var ClusterName string
 
+var _ LBProvider = &lbProvider{}
+
 // NewLBProvider creates a new LBProvider
 func NewLBProvider(cfg *config.LBConfig) (LBProvider, error) {
 	if !cfg.IsEnabled() {
 		return nil, nil
 	}
 
-	broker, err := setupNsxtBroker(&cfg.NSXT, cfg.NSXTSimulation)
+	broker, err := NewNsxtBroker(&cfg.NSXT)
 	if err != nil {
 		return nil, err
 	}
@@ -63,16 +65,6 @@ func NewLBProvider(cfg *config.LBConfig) (LBProvider, error) {
 		return nil, errors.Wrap(err, "creating load balancer classes failed")
 	}
 	return &lbProvider{lbService: newLbService(access, cfg.LoadBalancer.LBServiceID), classes: classes, keyLock: newKeyLock()}, nil
-}
-
-func setupNsxtBroker(nsxtConfig *config.NsxtConfig, nsxtSim *config.NsxtSimulation) (NsxtBroker, error) {
-	if nsxtSim != nil {
-		// TODO simulation not implemented yet
-		panic("simulation not implemented yet")
-		//NewInMemoryNsxtBroker(nsxtSim.SimulatedIPPools...), nil
-	}
-
-	return NewNsxtBroker(nsxtConfig)
 }
 
 func (p *lbProvider) Initialize(client clientset.Interface, stop <-chan struct{}) {

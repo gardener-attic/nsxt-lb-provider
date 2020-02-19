@@ -36,8 +36,8 @@ func (a ByScope) Len() int           { return len(a) }
 func (a ByScope) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByScope) Less(i, j int) bool { return strings.Compare(*a[i].Scope, *a[j].Scope) < 0 }
 
-// Clone clones the Tags and optionally adds additional tags
-func (m Tags) Clone(tags ...model.Tag) Tags {
+// Append clones the Tags and optionally adds additional tags
+func (m Tags) Append(tags ...model.Tag) Tags {
 	result := Tags{}
 	for n, t := range m {
 		result[n] = t
@@ -60,16 +60,20 @@ func (m Tags) Normalize() []model.Tag {
 	return result
 }
 
+func newTag(scope, tag string) model.Tag {
+	return model.Tag{Scope: &scope, Tag: &tag}
+}
+
 func clusterTag(clusterName string) model.Tag {
-	return model.Tag{Scope: strptr(ScopeCluster), Tag: strptr(clusterName)}
+	return newTag(ScopeCluster, clusterName)
 }
 
 func serviceTag(objectName types.NamespacedName) model.Tag {
-	return model.Tag{Scope: strptr(ScopeService), Tag: strptr(objectName.String())}
+	return newTag(ScopeService, objectName.String())
 }
 
 func portTag(mapping Mapping) model.Tag {
-	return model.Tag{Scope: strptr(ScopePort), Tag: strptr(fmt.Sprintf("%s/%d", mapping.Protocol, mapping.SourcePort))}
+	return newTag(ScopePort, fmt.Sprintf("%s/%d", mapping.Protocol, mapping.SourcePort))
 }
 
 func checkTags(tags []model.Tag, required ...model.Tag) bool {

@@ -46,7 +46,7 @@ type NSXTAccess interface {
 	DeleteLoadBalancerService(id string) error
 
 	// CreateVirtualServer creates a virtual server
-	CreateVirtualServer(clusterName string, objectName types.NamespacedName, tags TagSource, ipAddress string, mapping Mapping,
+	CreateVirtualServer(clusterName string, objectName types.NamespacedName, class LBClass, ipAddress string, mapping Mapping,
 		lbServicePath string, poolPath *string) (*model.LBVirtualServer, error)
 	// FindVirtualServers finds a virtual server by cluster and object name
 	FindVirtualServers(clusterName string, objectName types.NamespacedName) ([]*model.LBVirtualServer, error)
@@ -97,19 +97,21 @@ type NSXTAccess interface {
 	DeleteTCPMonitorProfile(id string) error
 }
 
-// TagSource is an interface to retrieve Tags
-type TagSource interface {
+// Reference references an object either by identifier or name
+type Reference struct {
+	Identifier string
+	Name       string
+}
+
+// IsEmpty returns true if neither identifier and name is set.
+func (r *Reference) IsEmpty() bool {
+	return r.Identifier == "" && r.Name == ""
+}
+
+// LBClass is an interface to retrieve settings of load balancer class.
+type LBClass interface {
 	// Tags retrieves tags of an object
 	Tags() []model.Tag
+	// AppProfile retrieves application profile either by path (stored in Reference.Identifier) or by name
+	AppProfile(protocol corev1.Protocol) (Reference, error)
 }
-
-// TagsSourceFunc is a function type to retrieve tags
-type TagsSourceFunc func() []model.Tag
-
-// Tags implements the TagSource interface
-func (n TagsSourceFunc) Tags() []model.Tag {
-	return n()
-}
-
-// EmptyTagsSource is an empty tags source
-var EmptyTagsSource = TagsSourceFunc(func() []model.Tag { return []model.Tag{} })

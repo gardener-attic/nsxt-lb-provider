@@ -50,26 +50,24 @@ type LBConfig struct {
 	LoadBalancerClasses map[string]*LoadBalancerClassConfig `gcfg:"LoadBalancerClass"`
 	NSXT                NsxtConfig                          `gcfg:"NSX-T"`
 	AdditionalTags      map[string]string                   `gcfg:"Tags"`
-	NSXTSimulation      *NsxtSimulation                     `gcfg:"NSX-T-Simulation"`
 }
 
 // LoadBalancerConfig contains the configuration for the load balancer itself
 type LoadBalancerConfig struct {
-	IPPoolName        string `gcfg:"ipPoolName"`
-	IPPoolID          string `gcfg:"ipPoolID"`
-	Size              string `gcfg:"size"`
-	LBServiceID       string `gcfg:"lbServiceId"`
-	Tier1GatewayPath  string `gcfg:"tier1GatewayPath"`
-	TCPAppProfileName string `gcfg:"tcpAppProfileName"`
-	TCPAppProfilePath string `gcfg:"tcpAppProfilePath"`
-	UDPAppProfileName string `gcfg:"udpAppProfileName"`
-	UDPAppProfilePath string `gcfg:"udpAppProfilePath"`
+	LoadBalancerClassConfig
+	Size             string `gcfg:"size"`
+	LBServiceID      string `gcfg:"lbServiceId"`
+	Tier1GatewayPath string `gcfg:"tier1GatewayPath"`
 }
 
 // LoadBalancerClassConfig contains the configuration for a load balancer class
 type LoadBalancerClassConfig struct {
-	IPPoolName string `gcfg:"ipPoolName"`
-	IPPoolID   string `gcfg:"ipPoolID"`
+	IPPoolName        string `gcfg:"ipPoolName"`
+	IPPoolID          string `gcfg:"ipPoolID"`
+	TCPAppProfileName string `gcfg:"tcpAppProfileName"`
+	TCPAppProfilePath string `gcfg:"tcpAppProfilePath"`
+	UDPAppProfileName string `gcfg:"udpAppProfileName"`
+	UDPAppProfilePath string `gcfg:"udpAppProfilePath"`
 }
 
 // NsxtConfig contains the NSX-T specific configuration
@@ -88,11 +86,6 @@ type NsxtConfig struct {
 	ClientAuthCertFile string `gcfg:"client-auth-cert-file"`
 	ClientAuthKeyFile  string `gcfg:"client-auth-key-file"`
 	CAFile             string `gcfg:"ca-file"`
-}
-
-// NsxtSimulation is a helper configuration to pass fake data for testing purposes
-type NsxtSimulation struct {
-	SimulatedIPPools []string `gcfg:"simulatedIPPools"`
 }
 
 // IsEnabled checks whether the load balancer feature is enabled
@@ -140,10 +133,7 @@ func (cfg *LBConfig) validateConfig() error {
 			return fmt.Errorf(msg)
 		}
 	}
-	if cfg.NSXTSimulation == nil {
-		return cfg.NSXT.validateConfig()
-	}
-	return nil
+	return cfg.NSXT.validateConfig()
 }
 
 // IsEmpty checks whether the load balancer config is empty (no values specified)
@@ -259,10 +249,6 @@ func (cfg *LBConfig) CompleteAndValidate() error {
 
 	// Env Vars should override config file entries if present
 	if err := cfg.NSXT.FromEnv(); err != nil {
-		return err
-	}
-
-	if err := cfg.validateConfig(); err != nil {
 		return err
 	}
 

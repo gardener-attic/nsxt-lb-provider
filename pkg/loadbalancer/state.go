@@ -26,6 +26,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
+
+	"github.com/gardener/nsxt-lb-provider/pkg/loadbalancer/config"
 )
 
 var verboseLevel = klog.Level(2)
@@ -84,8 +86,11 @@ func (s *state) Process(class *loadBalancerClass) error {
 		s.ipAddress = s.servers[0].IpAddress
 		className := getTag(s.servers[0].Tags, ScopeLBClass)
 		ipPoolID := getTag(s.servers[0].Tags, ScopeIPPoolID)
-		if class.className != className || class.ipPoolID != ipPoolID {
-			class = newLBClass(className, ipPoolID, "")
+		if class.className != className || class.ipPool.Identifier != ipPoolID {
+			classConfig := &config.LoadBalancerClassConfig{
+				IPPoolID: ipPoolID,
+			}
+			class = newLBClass(className, classConfig, class)
 		}
 	}
 	s.class = class
@@ -193,7 +198,8 @@ func (s *state) deleteOrphanTCPMonitors(validTCPMonitorPaths sets.String) error 
 
 func (s *state) allocateResources() (allocated bool, err error) {
 	if s.ipAddress == "" {
-		result, err2 := s.access.FindExternalIPAddressForObject(s.class.ipPoolID, s.clusterName, s.objectName)
+		ipPoolID := s.class.ipPool.Identifier
+		result, err2 := s.access.FindExternalIPAddressForObject(ipPoolID, s.clusterName, s.objectName)
 		if err2 != nil {
 			err = err2
 			return
@@ -206,25 +212,26 @@ func (s *state) allocateResources() (allocated bool, err error) {
 			err = fmt.Errorf("IP address not found in allocation %s", *result.Id)
 			return
 		}
-		s.ipAddress, err = s.access.AllocateExternalIPAddress(s.class.ipPoolID, s.clusterName, s.objectName)
+		s.ipAddress, err = s.access.AllocateExternalIPAddress(ipPoolID, s.clusterName, s.objectName)
 		if err != nil {
 			return
 		}
 		allocated = true
-		s.CtxInfof("allocated IP address %s from pool %s", s.ipAddress, s.class.ipPoolID)
+		s.CtxInfof("allocated IP address %s from pool %s", s.ipAddress, ipPoolID)
 	}
 	return
 }
 
 func (s *state) releaseResources() error {
 	if s.ipAddress != "" {
-		result, err := s.access.FindExternalIPAddressForObject(s.class.ipPoolID, s.clusterName, s.objectName)
+		ipPoolID := s.class.ipPool.Identifier
+		result, err := s.access.FindExternalIPAddressForObject(ipPoolID, s.clusterName, s.objectName)
 		if err != nil {
 			return err
 		}
 		if result != nil {
-			s.CtxInfof("releasing IP address %s to pool %s", s.ipAddress, s.class.ipPoolID)
-			err = s.access.ReleaseExternalIPAddress(s.class.ipPoolID, *result.Id)
+			s.CtxInfof("releasing IP address %s to pool %s", s.ipAddress, ipPoolID)
+			err = s.access.ReleaseExternalIPAddress(ipPoolID, *result.Id)
 			if err != nil {
 				return err
 			}
@@ -236,7 +243,7 @@ func (s *state) releaseResources() error {
 func (s *state) loggedReleaseResources() {
 	err := s.releaseResources()
 	if err != nil {
-		s.CtxInfof("failed to release IP address %s to pool %s", s.ipAddress, s.class.ipPoolID)
+		s.CtxInfof("failed to release IP address %s to pool %s", s.ipAddress, s.class.ipPool.Identifier)
 	}
 }
 

@@ -18,7 +18,6 @@
 package config
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -38,6 +37,8 @@ ipPoolName = poolPublic
 
 [LoadBalancerClass "private"]
 ipPoolName = poolPrivate
+tcpAppProfileName = tcp2
+udpAppProfileName = udp2
 
 [Tags]
 tag1 = value1
@@ -47,11 +48,6 @@ tag2 = value2
 user = admin
 password = secret
 host = nsxt-server
-
-[NSX-T-Simulation]
-simulatedIPPools = a
-simulatedIPPools = b
-simulatedIPPools = c
 `
 	config, err := ReadConfig(strings.NewReader(contents))
 	if err != nil {
@@ -74,18 +70,14 @@ simulatedIPPools = c
 		t.Errorf("expected two LoadBalancerClass subsections, but got %d", len(config.LoadBalancerClasses))
 	}
 	assertEquals("LoadBalancerClass.public.ipPoolName", config.LoadBalancerClasses["public"].IPPoolName, "poolPublic")
+	assertEquals("LoadBalancerClass.private.tcpAppProfileName", config.LoadBalancerClasses["private"].TCPAppProfileName, "tcp2")
+	assertEquals("LoadBalancerClass.private.udpAppProfileName", config.LoadBalancerClasses["private"].UDPAppProfileName, "udp2")
 	if len(config.AdditionalTags) != 2 || config.AdditionalTags["tag1"] != "value1" || config.AdditionalTags["tag2"] != "value2" {
 		t.Errorf("unexpected additionalTags %v", config.AdditionalTags)
 	}
 	assertEquals("NSX-T.user", config.NSXT.User, "admin")
 	assertEquals("NSX-T.password", config.NSXT.Password, "secret")
 	assertEquals("NSX-T.host", config.NSXT.Host, "nsxt-server")
-	if config.NSXTSimulation == nil {
-		t.Errorf("NSX-T-Simulation missing")
-	}
-	if fmt.Sprintf("%v", config.NSXTSimulation.SimulatedIPPools) != "[a b c]" {
-		t.Errorf("unexpected SimulatedIPPools: %v", config.NSXTSimulation.SimulatedIPPools)
-	}
 }
 
 func TestReadConfig2(t *testing.T) {
