@@ -35,15 +35,16 @@ var verboseLevel = klog.Level(2)
 type state struct {
 	*lbService
 	klog.Verbose
-	clusterName string
-	objectName  types.NamespacedName
-	service     *corev1.Service
-	nodes       []*corev1.Node
-	servers     []*model.LBVirtualServer
-	pools       []*model.LBPool
-	tcpMonitors []*model.LBTcpMonitorProfile
-	ipAddress   string
-	class       *loadBalancerClass
+	clusterName    string
+	objectName     types.NamespacedName
+	service        *corev1.Service
+	nodes          []*corev1.Node
+	servers        []*model.LBVirtualServer
+	pools          []*model.LBPool
+	tcpMonitors    []*model.LBTcpMonitorProfile
+	ipAddressAlloc *model.IpAddressAllocation
+	ipAddress      *string
+	class          *loadBalancerClass
 }
 
 func newState(lbService *lbService, clusterName string, service *corev1.Service, nodes []*corev1.Node) *state {
@@ -67,6 +68,10 @@ func (s *state) CtxInfof(format string, args ...interface{}) {
 // Process processes a load balancer and ensures that all needed objects are existing
 func (s *state) Process(class *loadBalancerClass) error {
 	var err error
+	s.ipAddressAlloc, s.ipAddress, err = s.access.FindExternalIPAddressForObject(class.ipPool.Identifier, s.clusterName, s.objectName)
+	if err != nil {
+		return err
+	}
 	s.servers, err = s.access.FindVirtualServers(s.clusterName, s.objectName)
 	if err != nil {
 		return err
@@ -79,18 +84,17 @@ func (s *state) Process(class *loadBalancerClass) error {
 	if err != nil {
 		return err
 	}
-	if len(s.service.Status.LoadBalancer.Ingress) > 0 {
-		s.ipAddress = s.service.Status.LoadBalancer.Ingress[0].IP
-	}
 	if len(s.servers) > 0 {
-		s.ipAddress = s.servers[0].IpAddress
 		className := getTag(s.servers[0].Tags, ScopeLBClass)
 		ipPoolID := getTag(s.servers[0].Tags, ScopeIPPoolID)
 		if class.className != className || class.ipPool.Identifier != ipPoolID {
 			classConfig := &config.LoadBalancerClassConfig{
 				IPPoolID: ipPoolID,
 			}
-			class = newLBClass(className, classConfig, class)
+			class, err = newLBClass(className, classConfig, class, nil)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	s.class = class
@@ -197,53 +201,36 @@ func (s *state) deleteOrphanTCPMonitors(validTCPMonitorPaths sets.String) error 
 }
 
 func (s *state) allocateResources() (allocated bool, err error) {
-	if s.ipAddress == "" {
+	if s.ipAddressAlloc == nil {
 		ipPoolID := s.class.ipPool.Identifier
-		result, err2 := s.access.FindExternalIPAddressForObject(ipPoolID, s.clusterName, s.objectName)
-		if err2 != nil {
-			err = err2
-			return
-		}
-		if result != nil {
-			if result.AllocationIp != nil {
-				s.ipAddress = *result.AllocationIp
-				return
-			}
-			err = fmt.Errorf("IP address not found in allocation %s", *result.Id)
-			return
-		}
-		s.ipAddress, err = s.access.AllocateExternalIPAddress(ipPoolID, s.clusterName, s.objectName)
+		s.ipAddressAlloc, s.ipAddress, err = s.access.AllocateExternalIPAddress(ipPoolID, s.clusterName, s.objectName)
 		if err != nil {
 			return
 		}
 		allocated = true
-		s.CtxInfof("allocated IP address %s from pool %s", s.ipAddress, ipPoolID)
+		s.CtxInfof("allocated IP address %s from pool %s", *s.ipAddress, ipPoolID)
 	}
 	return
 }
 
 func (s *state) releaseResources() error {
-	if s.ipAddress != "" {
+	if s.ipAddressAlloc != nil {
 		ipPoolID := s.class.ipPool.Identifier
-		result, err := s.access.FindExternalIPAddressForObject(ipPoolID, s.clusterName, s.objectName)
+		err := s.access.ReleaseExternalIPAddress(ipPoolID, *s.ipAddressAlloc.Id)
 		if err != nil {
 			return err
 		}
-		if result != nil {
-			s.CtxInfof("releasing IP address %s to pool %s", s.ipAddress, ipPoolID)
-			err = s.access.ReleaseExternalIPAddress(ipPoolID, *result.Id)
-			if err != nil {
-				return err
-			}
-		}
+		s.ipAddressAlloc = nil
+		s.ipAddress = nil
 	}
 	return nil
 }
 
 func (s *state) loggedReleaseResources() {
+	ipAddress := s.ipAddress
 	err := s.releaseResources()
 	if err != nil {
-		s.CtxInfof("failed to release IP address %s to pool %s", s.ipAddress, s.class.ipPool.Identifier)
+		s.CtxInfof("failed to release IP address %s to pool %s", *ipAddress, s.class.ipPool.Identifier)
 	}
 }
 
@@ -419,7 +406,13 @@ func (s *state) createVirtualServer(mapping Mapping, poolPath *string) (*model.L
 		return nil, errors.Wrapf(err, "get or create LBService failed")
 	}
 
-	server, err := s.access.CreateVirtualServer(s.clusterName, s.objectName, s.class, s.ipAddress, mapping, lbServicePath, poolPath)
+	applicationProfilePath, err := s.access.GetAppProfilePath(s.class, mapping.Protocol)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Lookup of application profile failed for %s", mapping.Protocol)
+	}
+
+	server, err := s.access.CreateVirtualServer(s.clusterName, s.objectName, s.class, *s.ipAddress, mapping,
+		lbServicePath, applicationProfilePath, poolPath)
 	if err != nil {
 		if allocated {
 			s.loggedReleaseResources()
@@ -432,11 +425,16 @@ func (s *state) createVirtualServer(mapping Mapping, poolPath *string) (*model.L
 }
 
 func (s *state) updateVirtualServer(server *model.LBVirtualServer, mapping Mapping, poolPath *string) error {
-	if !mapping.MatchNodePort(server) || !safeEquals(server.PoolPath, poolPath) {
+	applicationProfilePath, err := s.access.GetAppProfilePath(s.class, mapping.Protocol)
+	if err != nil {
+		return errors.Wrapf(err, "Lookup of application profile failed for %s", mapping.Protocol)
+	}
+	if !mapping.MatchNodePort(server) || !safeEquals(server.PoolPath, poolPath) || server.ApplicationProfilePath != applicationProfilePath {
+		server.ApplicationProfilePath = applicationProfilePath
 		server.DefaultPoolMemberPorts = []string{formatPort(mapping.NodePort)}
 		server.PoolPath = poolPath
 		s.CtxInfof("updating LbVirtualServer %s for %s", *server.Id, mapping)
-		err := s.access.UpdateVirtualServer(server)
+		err = s.access.UpdateVirtualServer(server)
 		if err != nil {
 			return err
 		}

@@ -186,7 +186,7 @@ func (a *access) findAppProfilePathByName(profileName string, resourceType strin
 	return path, nil
 }
 
-func (a *access) getAppProfilePath(class LBClass, protocol corev1.Protocol) (string, error) {
+func (a *access) GetAppProfilePath(class LBClass, protocol corev1.Protocol) (string, error) {
 	profileReference, err := class.AppProfile(protocol)
 	if err != nil {
 		return "", err
@@ -206,11 +206,8 @@ func (a *access) getAppProfilePath(class LBClass, protocol corev1.Protocol) (str
 	return a.findAppProfilePathByName(profileReference.Name, resourceType)
 }
 
-func (a *access) CreateVirtualServer(clusterName string, objectName types.NamespacedName, class LBClass, ipAddress string, mapping Mapping, lbServicePath string, poolPath *string) (*model.LBVirtualServer, error) {
-	applicationProfilePath, err := a.getAppProfilePath(class, mapping.Protocol)
-	if err != nil {
-		return nil, fmt.Errorf("Lookup of application profile failed for %s: %s", mapping.Protocol, err)
-	}
+func (a *access) CreateVirtualServer(clusterName string, objectName types.NamespacedName, class LBClass, ipAddress string,
+	mapping Mapping, lbServicePath, applicationProfilePath string, poolPath *string) (*model.LBVirtualServer, error) {
 	allTags := append(class.Tags(), clusterTag(clusterName), serviceTag(objectName), portTag(mapping))
 	virtualServer := model.LBVirtualServer{
 		Description: strptr(fmt.Sprintf("virtual server for cluster %s, service %s created by %s",
@@ -431,29 +428,42 @@ func (a *access) DeleteTCPMonitorProfile(id string) error {
 	return nil
 }
 
-func (a *access) AllocateExternalIPAddress(ipPoolID string, clusterName string, objectName types.NamespacedName) (string, error) {
+func (a *access) AllocateExternalIPAddress(ipPoolID string, clusterName string, objectName types.NamespacedName) (*model.IpAddressAllocation, *string, error) {
 	allocation := model.IpAddressAllocation{
 		Tags: a.standardTags.Append(clusterTag(clusterName), serviceTag(objectName)).Normalize(),
 	}
-	allocated, err := a.broker.AllocateFromIPPool(ipPoolID, allocation)
+	allocated, ipAdress, err := a.broker.AllocateFromIPPool(ipPoolID, allocation)
 	if err != nil {
-		return "", errors.Wrapf(err, "allocating external IP address failed")
+		return nil, nil, errors.Wrapf(err, "allocating external IP address failed")
 	}
-	return *allocated.AllocationIp, nil
+	return &allocated, &ipAdress, nil
 }
 
-func (a *access) FindExternalIPAddressForObject(ipPoolID string, clusterName string, objectName types.NamespacedName) (*model.IpAddressAllocation, error) {
+func (a *access) FindExternalIPAddressForObject(ipPoolID string, clusterName string, objectName types.NamespacedName) (*model.IpAddressAllocation, *string, error) {
 	results, err := a.findExternalIPAddresses(ipPoolID, a.ownerTag, clusterTag(clusterName), serviceTag(objectName))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if len(results) > 0 {
-		return results[0], nil
+	if len(results) == 0 {
+		return nil, nil, nil
 	}
-	return nil, nil
+	if len(results) > 1 {
+		return nil, nil, fmt.Errorf("Multiple IP address allocations")
+	}
+
+	item := results[0]
+	ipAddress := item.AllocationIp
+	if ipAddress == nil {
+		ipAddress, err = a.broker.GetRealizedExternalIPAddress(*item.Path, 5*time.Second)
+		if err != nil {
+			return nil, nil, errors.Wrapf(err, "GetReleaziedExternalIPAddress failed for allocation %s IP pool %s failed", *item.Path, ipPoolID)
+		}
+	}
+
+	return item, ipAddress, nil
 }
 
-func (a *access) FindExternalIPAddresses(ipPoolID string, clusterName string) ([]*model.IpAddressAllocation, error) {
+func (a *access) ListExternalIPAddresses(ipPoolID string, clusterName string) ([]*model.IpAddressAllocation, error) {
 	return a.findExternalIPAddresses(ipPoolID, a.ownerTag, clusterTag(clusterName))
 }
 
@@ -466,12 +476,6 @@ func (a *access) findExternalIPAddresses(ipPoolID string, tags ...model.Tag) ([]
 	for _, item := range list {
 		if checkTags(item.Tags, tags...) {
 			itemCopy := item
-			if itemCopy.AllocationIp == nil {
-				itemCopy.AllocationIp, err = a.broker.GetRealizedExternalIPAddress(*itemCopy.Path, 5*time.Second)
-				if err != nil {
-					return nil, errors.Wrapf(err, "GetReleaziedExternalIPAddress failed for allocation %s IP pool %s failed", *itemCopy.Path, ipPoolID)
-				}
-			}
 			results = append(results, &itemCopy)
 		}
 	}

@@ -47,7 +47,7 @@ type NSXTAccess interface {
 
 	// CreateVirtualServer creates a virtual server
 	CreateVirtualServer(clusterName string, objectName types.NamespacedName, class LBClass, ipAddress string, mapping Mapping,
-		lbServicePath string, poolPath *string) (*model.LBVirtualServer, error)
+		lbServicePath, applicationProfilePath string, poolPath *string) (*model.LBVirtualServer, error)
 	// FindVirtualServers finds a virtual server by cluster and object name
 	FindVirtualServers(clusterName string, objectName types.NamespacedName) ([]*model.LBVirtualServer, error)
 	// ListVirtualServers finds all virtual servers for a cluster
@@ -76,12 +76,15 @@ type NSXTAccess interface {
 	// FindIPPoolByName finds an IP pool by name
 	FindIPPoolByName(poolName string) (string, error)
 
+	// GetAppProfilePath gets the application profile for given loadbalancer class and protocol
+	GetAppProfilePath(class LBClass, protocol corev1.Protocol) (string, error)
+
 	// AllocateExternalIPAddress allocates an IP address from the given IP pool
-	AllocateExternalIPAddress(ipPoolID string, clusterName string, objectName types.NamespacedName) (string, error)
-	// FindExternalIPAddresses finds all IP addresses belonging to a clusterName from the given IP pool
-	FindExternalIPAddresses(ipPoolID string, clusterName string) ([]*model.IpAddressAllocation, error)
+	AllocateExternalIPAddress(ipPoolID string, clusterName string, objectName types.NamespacedName) (allocation *model.IpAddressAllocation, ipAddress *string, err error)
+	// ListExternalIPAddresses finds all IP addresses belonging to a clusterName from the given IP pool
+	ListExternalIPAddresses(ipPoolID string, clusterName string) ([]*model.IpAddressAllocation, error)
 	// FindExternalIPAddressForObject finds an IP address belonging to an object
-	FindExternalIPAddressForObject(ipPoolID string, clusterName string, objectName types.NamespacedName) (*model.IpAddressAllocation, error)
+	FindExternalIPAddressForObject(ipPoolID string, clusterName string, objectName types.NamespacedName) (allocation *model.IpAddressAllocation, ipAddress *string, err error)
 	// ReleaseExternalIPAddress releases an allocated IP address
 	ReleaseExternalIPAddress(ipPoolID string, id string) error
 

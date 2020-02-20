@@ -51,53 +51,74 @@ func setupClasses(access NSXTAccess, cfg *config.LBConfig) (*loadBalancerClasses
 		classes: map[string]*loadBalancerClass{},
 	}
 
-	defaultClass := newLBClass(config.DefaultLoadBalancerClass, &cfg.LoadBalancer.LoadBalancerClassConfig, nil)
+	resolver := &ipPoolResolver{access: access, knownIPPools: map[string]string{}}
+	defaultClass, err := newLBClass(config.DefaultLoadBalancerClass, &cfg.LoadBalancer.LoadBalancerClassConfig, nil, resolver)
+	if err != nil {
+		return nil, errors.Wrapf(err, "invalid LoadBalancerClass %s", config.DefaultLoadBalancerClass)
+	}
 	if defCfg, ok := cfg.LoadBalancerClasses[defaultClass.className]; ok {
-		defaultClass = newLBClass(config.DefaultLoadBalancerClass, defCfg, defaultClass)
-	} else {
-		err := lbClasses.add(access, defaultClass)
+		defaultClass, err = newLBClass(config.DefaultLoadBalancerClass, defCfg, defaultClass, resolver)
 		if err != nil {
-			return nil, errors.Wrapf(err, "invalid LoadBalancerClass %s", defaultClass.className)
+			return nil, errors.Wrapf(err, "invalid LoadBalancerClass %s", config.DefaultLoadBalancerClass)
 		}
+	} else {
+		lbClasses.add(defaultClass)
 	}
 
 	for name, classConfig := range cfg.LoadBalancerClasses {
 		if _, ok := lbClasses.classes[name]; ok {
 			return nil, fmt.Errorf("duplicate LoadBalancerClass %s", name)
 		}
-		class := newLBClass(name, classConfig, defaultClass)
-		err := lbClasses.add(access, class)
+		class, err := newLBClass(name, classConfig, defaultClass, resolver)
 		if err != nil {
 			return nil, errors.Wrapf(err, "invalid LoadBalancerClass %s", name)
 		}
+		lbClasses.add(class)
 	}
 
 	return lbClasses, nil
+}
+
+func (c *loadBalancerClasses) GetClassNames() []string {
+	names := make([]string, 0, len(c.classes))
+	for name := range c.classes {
+		names = append(names, name)
+	}
+	return names
 }
 
 func (c *loadBalancerClasses) GetClass(name string) *loadBalancerClass {
 	return c.classes[name]
 }
 
-func (c *loadBalancerClasses) add(access NSXTAccess, class *loadBalancerClass) error {
-	var err error
-	ipPoolID := class.ipPool.Identifier
-	if ipPoolID == "" {
-		ipPoolID, err = access.FindIPPoolByName(class.ipPool.Name)
-		if err != nil {
-			return err
-		}
-		class.ipPool.Identifier = ipPoolID
-	}
-	class.tags = []model.Tag{
-		newTag(ScopeIPPoolID, ipPoolID),
-		newTag(ScopeLBClass, class.className),
-	}
+func (c *loadBalancerClasses) add(class *loadBalancerClass) {
 	c.classes[class.className] = class
+}
+
+type ipPoolResolver struct {
+	access       NSXTAccess
+	knownIPPools map[string]string
+}
+
+func (r *ipPoolResolver) resolve(ipPool *Reference) error {
+	var err error
+	ipPoolID := ipPool.Identifier
+	if ipPoolID == "" {
+		var ok bool
+		ipPoolID, ok = r.knownIPPools[ipPool.Name]
+		if !ok {
+			ipPoolID, err = r.access.FindIPPoolByName(ipPool.Name)
+			if err != nil {
+				return err
+			}
+			r.knownIPPools[ipPool.Name] = ipPoolID
+		}
+		ipPool.Identifier = ipPoolID
+	}
 	return nil
 }
 
-func newLBClass(name string, classConfig *config.LoadBalancerClassConfig, defaults *loadBalancerClass) *loadBalancerClass {
+func newLBClass(name string, classConfig *config.LoadBalancerClassConfig, defaults *loadBalancerClass, resolver *ipPoolResolver) (*loadBalancerClass, error) {
 	class := loadBalancerClass{
 		className: name,
 		ipPool: Reference{
@@ -112,7 +133,6 @@ func newLBClass(name string, classConfig *config.LoadBalancerClassConfig, defaul
 			Identifier: classConfig.UDPAppProfilePath,
 			Name:       classConfig.UDPAppProfileName,
 		},
-		tags: []model.Tag{},
 	}
 	if defaults != nil {
 		if class.ipPool.IsEmpty() {
@@ -125,7 +145,20 @@ func newLBClass(name string, classConfig *config.LoadBalancerClassConfig, defaul
 			class.udpAppProfile = defaults.udpAppProfile
 		}
 	}
-	return &class
+	if resolver != nil {
+		err := resolver.resolve(&class.ipPool)
+		if err != nil {
+			return nil, err
+		}
+	} else if class.ipPool.Identifier == "" {
+		return nil, fmt.Errorf("ipPoolResolver needed if IP pool ID not provided")
+	}
+	class.tags = []model.Tag{
+		newTag(ScopeIPPoolID, class.ipPool.Identifier),
+		newTag(ScopeLBClass, class.className),
+	}
+
+	return &class, nil
 }
 
 func (c *loadBalancerClass) Tags() []model.Tag {

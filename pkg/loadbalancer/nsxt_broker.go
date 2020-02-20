@@ -61,7 +61,7 @@ type NsxtBroker interface {
 	UpdateLoadBalancerPool(pool model.LBPool) (model.LBPool, error)
 	DeleteLoadBalancerPool(id string) error
 	ListIPPools() ([]model.IpAddressPool, error)
-	AllocateFromIPPool(ipPoolID string, allocation model.IpAddressAllocation) (model.IpAddressAllocation, error)
+	AllocateFromIPPool(ipPoolID string, allocation model.IpAddressAllocation) (model.IpAddressAllocation, string, error)
 	ListIPPoolAllocations(ipPoolID string) ([]model.IpAddressAllocation, error)
 	ReleaseFromIPPool(ipPoolID, ipAllocationID string) error
 	GetRealizedExternalIPAddress(ipAllocationPath string, timeout time.Duration) (*string, error)
@@ -422,22 +422,24 @@ func (b *nsxtBroker) ListIPPools() ([]model.IpAddressPool, error) {
 	return list, nil
 }
 
-func (b *nsxtBroker) AllocateFromIPPool(ipPoolID string, allocation model.IpAddressAllocation) (model.IpAddressAllocation, error) {
+func (b *nsxtBroker) AllocateFromIPPool(ipPoolID string, allocation model.IpAddressAllocation) (model.IpAddressAllocation, string, error) {
 	id := uuid.New().String()
 	err := b.ipAllocationsClient.Patch(ipPoolID, id, allocation)
 	if err != nil {
-		return allocation, nicerVAPIError(err)
+		return allocation, "", nicerVAPIError(err)
 	}
 	allocated, err := b.ipAllocationsClient.Get(ipPoolID, id)
-	if err != nil || allocated.AllocationIp != nil {
-		return allocated, nicerVAPIError(err)
+	if err != nil {
+		return allocation, "", nicerVAPIError(err)
 	}
 	ipAddress, err := b.GetRealizedExternalIPAddress(*allocated.Path, 15*time.Second)
 	if err != nil {
-		return allocated, nicerVAPIError(err)
+		return allocated, "", nicerVAPIError(err)
 	}
-	allocated.AllocationIp = ipAddress
-	return allocated, nil
+	if ipAddress == nil {
+		return allocated, "", fmt.Errorf("no IP address allocated for %s", *allocated.Path)
+	}
+	return allocated, *ipAddress, nil
 }
 
 func (b *nsxtBroker) ListIPPoolAllocations(ipPoolID string) ([]model.IpAddressAllocation, error) {

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog"
 
 	corev1 "k8s.io/api/core/v1"
@@ -93,6 +94,12 @@ func (p *lbProvider) doReorgStep(client clientcorev1.ServiceInterface) error {
 }
 
 func (p *lbProvider) ReorgServices(services map[types.NamespacedName]corev1.Service) error {
+	ipPoolIds := sets.NewString()
+	for _, name := range p.classes.GetClassNames() {
+		class := p.classes.GetClass(name)
+		ipPoolIds.Insert(class.ipPool.Identifier)
+	}
+
 	lbs := map[types.NamespacedName]struct{}{}
 	servers, err := p.access.ListVirtualServers(ClusterName)
 	if err != nil {
@@ -103,7 +110,10 @@ func (p *lbProvider) ReorgServices(services map[types.NamespacedName]corev1.Serv
 		if tag != "" {
 			lbs[parseNamespacedName(tag)] = struct{}{}
 		}
+		ipPoolID := getTag(server.Tags, ScopeIPPoolID)
+		ipPoolIds.Insert(ipPoolID)
 	}
+	ipPoolIds.Delete("")
 
 	pools, err := p.access.ListPools(ClusterName)
 	if err != nil {
@@ -124,6 +134,19 @@ func (p *lbProvider) ReorgServices(services map[types.NamespacedName]corev1.Serv
 		tag := getTag(pool.Tags, ScopeService)
 		if tag != "" {
 			lbs[parseNamespacedName(tag)] = struct{}{}
+		}
+	}
+
+	for ipPoolID := range ipPoolIds {
+		ipAddressAllocs, err := p.access.ListExternalIPAddresses(ipPoolID, ClusterName)
+		if err != nil {
+			return err
+		}
+		for _, ipAddressAlloc := range ipAddressAllocs {
+			tag := getTag(ipAddressAlloc.Tags, ScopeService)
+			if tag != "" {
+				lbs[parseNamespacedName(tag)] = struct{}{}
+			}
 		}
 	}
 
